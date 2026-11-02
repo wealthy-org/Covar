@@ -1,7 +1,10 @@
+
 import { z } from "zod";
 
 export const riskManagementSchema = z.object({
-  maxLeverage: z.number().min(1).max(5),
+  // Actual leverage ceiling is enforced by the risk policy,
+  // not hard-coded into the strategy schema.
+  maxLeverage: z.number().positive().finite(),
 
   stopLossPercent: z.number().positive().max(100).nullable(),
 
@@ -17,3 +20,7 @@ export const riskManagementSchema = z.object({
 
   emergencyStopEnabled: z.boolean(),
 });
+
+export type RiskManagement = z.infer<
+  typeof riskManagementSchema
+>;
