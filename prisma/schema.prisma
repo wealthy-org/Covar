@@ -1,0 +1,72 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StrategyStatus {
+  draft
+  validated
+  published
+  archived
+}
+
+enum StrategyNetwork {
+  testnet
+  mainnet
+}
+
+enum StrategyTimeframe {
+  m1  @map("1m")
+  m5  @map("5m")
+  m15 @map("15m")
+  m30 @map("30m")
+  h1  @map("1h")
+  h4  @map("4h")
+  d1  @map("1d")
+}
+
+enum StrategyExecutionMode {
+  practice
+  testnet
+}
+
+enum StrategyOrderType {
+  market
+  limit
+}
+
+model Strategy {
+  id          String         @id
+  name        String         @db.VarChar(100)
+  description String         @db.VarChar(1000)
+  version     Int
+  status      StrategyStatus
+
+  chain       String         @default("robinhood-chain")
+  network     StrategyNetwork
+  symbol      String         @db.VarChar(32)
+  baseAsset   String         @db.VarChar(32)
+  quoteAsset  String         @db.VarChar(32)
+  timeframe   String         @db.VarChar(3)
+
+  indicators      Json
+  entryConditions Json
+  exitConditions  Json
+  positionSizing  Json
+  risk            Json
+
+  executionMode StrategyExecutionMode
+  orderType     StrategyOrderType
+
+  createdAt DateTime @db.Timestamptz(3)
+  updatedAt DateTime @db.Timestamptz(3)
+
+  @@index([status, updatedAt])
+  @@index([network, symbol])
+  @@map("strategies")
+}
