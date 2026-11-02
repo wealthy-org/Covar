@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity, Bot, Compass, Home, LayoutDashboard, Menu, Plus,
+  Activity, Bot, Compass, Home, Menu, Plus,
   Settings2, Wallet, X
 } from "lucide-react";
 import { useState } from "react";
