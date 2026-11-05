@@ -1,72 +1,90 @@
+// Covar application storage — Prisma over SQLite by default.
+//
+// This is the durable home for web-side records the brief requires (§8): users,
+// strategy versions, practice runs, ledger rows, credits and notifications.
+// The execution plane intentionally keeps its OWN journals (separate processes,
+// separate audit trails) — this DB never holds order state, and the services never
+// read from it. Switch provider to postgresql for a shared deployment; the schema
+// uses no SQLite-specific types.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
-enum StrategyStatus {
-  draft
-  validated
-  published
-  archived
+// Whole-session snapshot, synced from the client store. One row per device-session
+// in this single-operator review build; it stores the JSON verbatim so app version
+// changes never require a column migration just to load older state.
+model SessionState {
+  id        String   @id @default("local")
+  savedAt   DateTime @updatedAt
+  stateJson String
 }
 
-enum StrategyNetwork {
-  testnet
-  mainnet
+// A notification, durable across reloads. Written only by real state transitions —
+// never by marketing copy.
+model Notification {
+  id        String   @id
+  ts        DateTime
+  kind      String // practice | publish | money | risk | copilot | system
+  title     String
+  body      String
+  href      String?
+  read      Boolean  @default(false)
+  sessionId String   @default("local")
+
+  @@index([sessionId, ts])
 }
 
-enum StrategyTimeframe {
-  m1  @map("1m")
-  m5  @map("5m")
-  m15 @map("15m")
-  m30 @map("30m")
-  h1  @map("1h")
-  h4  @map("4h")
-  d1  @map("1d")
+// Append-only money/AI ledger rows. The chain ledger is the contract; this is the
+// web-side record for the session — labelled simulated until deposits settle on-chain.
+model LedgerEntry {
+  id        String   @id
+  ts        DateTime
+  kind      String // deposit | withdrawal_request | withdrawal_claim | trade_fee | ai_credit
+  agentId   String?
+  label     String
+  amountUsd Float
+  state     String // pending | settled | failed
+  txHash    String? // only ever populated with a hash returned by a chain RPC
+  note      String?
+  sessionId String  @default("local")
+
+  @@index([sessionId, ts])
 }
 
-enum StrategyExecutionMode {
-  practice
-  testnet
+// Strategy drafts and published versions. Version history is first-class: a row is
+// immutable once `publishedAt` is set; edits create a new row.
+model StrategyVersion {
+  id         String    @id
+  agentId    String
+  version    Int
+  name       String
+  rulesJson  String
+  publishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  sessionId  String    @default("local")
+
+  @@unique([agentId, version, sessionId])
 }
 
-enum StrategyOrderType {
-  market
-  limit
-}
+// Practice runs with their price-mode provenance (live marks vs simulated ticks).
+model PracticeRun {
+  agentId     String   @id
+  startedAt   DateTime
+  capitalUsd  Float
+  pnlUsd      Float    @default(0)
+  ticks       Int      @default(0)
+  status      String   // running | stopped
+  priceMode   String   // live | simulated
+  entryPrice  Float?
+  lastPrice   Float?
+  priceSource String?
+  sessionId   String   @default("local")
 
-model Strategy {
-  id          String         @id
-  name        String         @db.VarChar(100)
-  description String         @db.VarChar(1000)
-  version     Int
-  status      StrategyStatus
-
-  chain       String         @default("robinhood-chain")
-  network     StrategyNetwork
-  symbol      String         @db.VarChar(32)
-  baseAsset   String         @db.VarChar(32)
-  quoteAsset  String         @db.VarChar(32)
-  timeframe   String         @db.VarChar(3)
-
-  indicators      Json
-  entryConditions Json
-  exitConditions  Json
-  positionSizing  Json
-  risk            Json
-
-  executionMode StrategyExecutionMode
-  orderType     StrategyOrderType
-
-  createdAt DateTime @db.Timestamptz(3)
-  updatedAt DateTime @db.Timestamptz(3)
-
-  @@index([status, updatedAt])
-  @@index([network, symbol])
-  @@map("strategies")
+  @@index([sessionId])
 }

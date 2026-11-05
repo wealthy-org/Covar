@@ -1,19 +1,25 @@
 import type { Metadata } from "next";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import "./globals.css";
-import { AppShell } from "@/components/layout/app-shell";
+import { Nav } from "@/components/Nav";
+import { Footer } from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Covar",
-  description: "Build, test, and operate autonomous trading agents."
+  title: "Covar — strategy agents with published rules",
+  description:
+    "Covar turns a conversation into a validated trading strategy, backtests it, runs it in practice, and lets investors fund a versioned vault. Testnet build on Robinhood Chain.",
 };
 
-export default function RootLayout({
-  children
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body>
-        <AppShell>{children}</AppShell>
+        <div className="page">
+          <Nav />
+          <main className="grow">{children}</main>
+          <Footer />
+        </div>
       </body>
     </html>
   );

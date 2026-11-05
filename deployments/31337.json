@@ -1,0 +1,18 @@
+{
+  "chainId": 31337,
+  "network": "localhost",
+  "contract": "CovarVault",
+  "address": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  "asset": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+  "constructorArgs": {
+    "asset": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+    "feeRecipient": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+    "operator": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+  },
+  "investor": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+  "navPerShare": "1.081559674731047022",
+  "totalShares": "1979.9",
+  "reportedAssets": "2141.38",
+  "deployedAt": "2026-11-04T16:43:58.157Z",
+  "notes": "Local rehearsal only. MockUSDG is a faucet token and must never reach mainnet."
+}

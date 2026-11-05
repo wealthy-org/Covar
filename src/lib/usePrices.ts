@@ -1,0 +1,64 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { PriceSnapshot } from "./prices";
+
+/**
+ * Polls our own /api/prices route. When the feed is down the snapshot says so and
+ * practice stays on simulated ticks — no invented prices reach the ledger.
+ */
+export function usePrices(intervalMs = 5000) {
+  const [snapshot, setSnapshot] = useState<PriceSnapshot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch("/api/prices", { cache: "no-store" });
+        const json = (await res.json()) as PriceSnapshot;
+        if (!cancelled) setSnapshot(json);
+      } catch {
+        if (!cancelled)
+          setSnapshot({
+            ok: false,
+            source: "none",
+            at: new Date().toISOString(),
+            prices: {},
+            stale: false,
+            error: "the app could not reach its own price route",
+          });
+      }
+    }
+
+    void load();
+    const timer = setInterval(load, intervalMs);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+  }, [intervalMs]);
+
+  return snapshot;
+}
+
+/** MARKET_SYMBOL lookup, kept here so client code does not import the server module. */
+export const MARKET_TO_SYMBOL: Record<string, string> = {
+  "BTC-PERP": "BTC",
+  "ETH-PERP": "ETH",
+  "SOL-PERP": "SOL",
+  "HYPE-PERP": "HYPE",
+};
+
+export function priceFor(snapshot: PriceSnapshot | null, market: string): number | undefined {
+  if (!snapshot?.ok) return undefined;
+  const symbol = MARKET_TO_SYMBOL[market];
+  return symbol ? snapshot.prices[symbol] : undefined;
+}
+
+export function sourceLabel(snapshot: PriceSnapshot | null): string {
+  if (!snapshot) return "connecting…";
+  if (snapshot.ok) return snapshot.source === "hyperliquid" ? "Hyperliquid perp mids" : "Coinbase spot";
+  if (snapshot.stale) return "stale cache";
+  return "unavailable";
+}
