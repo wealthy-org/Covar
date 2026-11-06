@@ -18,7 +18,7 @@ import { feeSplit, runBacktest, type BacktestResult } from "@/lib/backtest";
 import { actions, uid } from "@/lib/store";
 import { cx, num, pct, pctSigned, usd } from "@/lib/format";
 import { LineChart } from "./Chart";
-import { Field, Modal, ProvenanceBadge, useToast } from "./ui";
+import { CovarMark, Field, Modal, ProvenanceBadge, useToast } from "./ui";
 import { RulesEditor } from "./RulesEditor";
 
 type Msg = {
@@ -283,7 +283,7 @@ export function Builder() {
               <div className="chat" ref={chatRef} style={{ padding: 16, minHeight: 300 }}>
                 {messages.map((m) => (
                   <div key={m.id} className={cx("msg", m.role === "user" ? "msg-user" : "msg-assistant")}>
-                    {m.role === "assistant" && <span className="avatar">C</span>}
+                    {m.role === "assistant" && <CovarMark />}
                     <div className="msg-body stack gap-8">
                       <span>{m.text}</span>
                       {m.bullets && (
@@ -322,7 +322,7 @@ export function Builder() {
                 ))}
                 {thinking && (
                   <div className="msg msg-assistant">
-                    <span className="avatar">C</span>
+                    <CovarMark />
                     <div className="msg-body row gap-6">
                       <span className="skel" style={{ width: 120, height: 8 }} />
                     </div>

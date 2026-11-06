@@ -991,3 +991,7 @@ p { margin: 0; }
 .stack > *, .two-col > *, .grid-2 > *, .grid-3 > *, .grid-4 > * { min-width: 0; }
 @media (max-width: 760px) { .table-min { min-width: 620px; } }
 .table-wrap, .card > div[style*="overflow"] { -webkit-overflow-scrolling: touch; }
+.token-logo { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; flex: 0 0 auto; box-sizing: border-box; }
+.token-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.token-stack { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.token-stack > span { position: relative; display: inline-flex; border-radius: 50%; }

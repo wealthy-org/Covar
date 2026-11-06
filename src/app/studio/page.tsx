@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Builder } from "@/components/Builder";
 import { actions, useCovar } from "@/lib/store";
 import { pct, pctSigned, usd } from "@/lib/format";
-import { Empty, ProvenanceBadge, useToast } from "@/components/ui";
+import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
 import { WalletGate } from "@/components/WalletGate";
 import { priceFor, sourceLabel, usePrices } from "@/lib/usePrices";
 
@@ -101,7 +101,12 @@ function StudioInner() {
             <tbody>
               {drafts.map((d) => (
                 <tr key={d.id}>
-                  <td className="strong">{d.name}</td>
+                  <td className="strong">
+                    <div className="row gap-10" style={{ flexWrap: "nowrap" }}>
+                      <TokenLogo market={d.market} size={24} />
+                      <span>{d.name}</span>
+                    </div>
+                  </td>
                   <td className="small">{d.market} · {d.timeframe}</td>
                   <td className="right num">{d.risk.leverage}x</td>
                   <td className="right small">{new Date(d.createdAt).toLocaleDateString("en-GB")}</td>
@@ -155,10 +160,15 @@ function StudioInner() {
                   return (
                     <tr key={a.id}>
                       <td>
+<div className="row gap-10" style={{ flexWrap: "nowrap" }}>
+                      <TokenLogo market={a.market} size={26} />
+                      <div className="stack" style={{ gap: 1, minWidth: 0 }}>
                         <Link href={`/agents/${a.id}`} className="strong">
                           {a.name}
                         </Link>
                         <div className="tiny">{a.market} · v{a.version}</div>
+                      </div>
+                    </div>
                       </td>
                       <td>
                         <span className="badge badge-outline">{a.status}</span>

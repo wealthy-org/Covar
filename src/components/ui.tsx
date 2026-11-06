@@ -192,29 +192,61 @@ export function useToast() {
   return { toast: setMsg, node };
 }
 
-/* Coloured initial disc used for agents across Discover, detail and portfolio. */
-const AVATAR_TONES = ["#3B5BDB", "#2F49B5", "#3D6FA8", "#5B5BD6", "#4A5FBF", "#385B8C"];
-export function AgentAvatar({ name, seed, size = 28 }: { name: string; seed: string; size?: number }) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+/* Official token marks (public/tokens/) — agents are identified by the asset they trade. */
+const TOKEN_LOGO: Record<string, { src: string; name: string; bg: string; pad: number }> = {
+  BTC: { src: "/tokens/btc.svg", name: "Bitcoin", bg: "transparent", pad: 0 },
+  ETH: { src: "/tokens/eth.svg", name: "Ethereum", bg: "#ffffff", pad: 0.2 },
+  SOL: { src: "/tokens/sol.svg", name: "Solana", bg: "#000000", pad: 0.24 },
+  HYPE: { src: "/tokens/hype.png", name: "Hyperliquid", bg: "#072723", pad: 0 },
+  USDG: { src: "/tokens/usdg.png", name: "Global Dollar (USDG)", bg: "transparent", pad: 0 },
+};
+
+export const tokenOf = (market: string) => market.split(/[-/]/)[0].toUpperCase();
+
+export function TokenLogo({ market, size = 28, ring = false }: { market: string; size?: number; ring?: boolean }) {
+  const t = TOKEN_LOGO[tokenOf(market)];
+  const pad = t ? Math.round(size * t.pad) : Math.round(size * 0.22);
   return (
     <span
-      aria-hidden
+      className="token-logo"
+      title={t ? `${t.name} · ${market}` : market}
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
-        background: AVATAR_TONES[h % AVATAR_TONES.length],
-        color: "#fff",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "var(--font-mono)",
-        fontSize: Math.round(size * 0.4),
-        flex: "0 0 auto",
+        padding: pad,
+        background: t?.bg ?? "#ffffff",
+        boxShadow:
+          [ring ? "0 0 0 2px #fff" : "", !t || t.bg === "#ffffff" ? "inset 0 0 0 1px var(--border)" : ""].filter(Boolean).join(", ") ||
+          undefined,
       }}
     >
-      {name.slice(0, 1).toUpperCase()}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={t?.src ?? "/logo.png"} alt={t ? t.name : "Covar"} width={size - pad * 2} height={size - pad * 2} />
+    </span>
+  );
+}
+
+/** Creators have no logo of their own — show the official marks of the markets they trade. */
+export function TokenStack({ markets, size = 28 }: { markets: string[]; size?: number }) {
+  const uniq = Array.from(new Set(markets.map(tokenOf))).slice(0, 3);
+  if (uniq.length === 0) return <TokenLogo market="COVAR" size={size} />;
+  return (
+    <span className="token-stack" style={{ height: size }}>
+      {uniq.map((m, i) => (
+        <span key={m} style={{ marginLeft: i === 0 ? 0 : -Math.round(size * 0.32), zIndex: uniq.length - i }}>
+          <TokenLogo market={m} size={size} ring />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/** Covar's own mark, for assistant messages. */
+export function CovarMark({ size = 26 }: { size?: number }) {
+  return (
+    <span className="avatar" style={{ width: size, height: size, background: "#fff" }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo.png" alt="Covar" width={Math.round(size * 0.46)} height={Math.round(size * 0.5)} />
     </span>
   );
 }

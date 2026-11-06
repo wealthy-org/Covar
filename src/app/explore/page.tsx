@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useCovar } from "@/lib/store";
-import { AgentAvatar } from "@/components/ui";
+import { TokenLogo } from "@/components/ui";
 import { Sparkline } from "@/components/Chart";
 import { PROVENANCE_LABEL } from "@/lib/types";
 import { cx, pct, pctSigned, usd } from "@/lib/format";
@@ -64,7 +64,7 @@ function ArenaCard({ agent }: { agent: Agent }) {
   return (
     <Link href={`/agents/${agent.id}`} className="rcard arena-card">
       <div className="row gap-10" style={{ minWidth: 0 }}>
-        <AgentAvatar name={agent.name} seed={agent.id} size={30} />
+        <TokenLogo market={agent.market} size={30} />
         <div className="stack" style={{ gap: 2, minWidth: 0 }}>
           <span className="strong truncate" style={{ fontSize: 14.5, color: "var(--ink)" }}>
             {agent.name}
@@ -179,7 +179,7 @@ export default function ExplorePage() {
                   <tr key={a.id} className="row-click" onClick={() => router.push(`/agents/${a.id}`)}>
                     <td>
                       <div className="row gap-10" style={{ flexWrap: "nowrap" }}>
-                        <AgentAvatar name={a.name} seed={a.id} />
+                        <TokenLogo market={a.market} />
                         <div className="stack" style={{ gap: 2, minWidth: 0 }}>
                           <span className="row gap-8" style={{ flexWrap: "nowrap" }}>
                             <Link href={`/agents/${a.id}`} className="table-strong" style={{ color: "var(--ink)", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>

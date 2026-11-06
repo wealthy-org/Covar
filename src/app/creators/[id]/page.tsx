@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCovar } from "@/lib/store";
 import { cx, dateOnly, pct, pctSigned, usd } from "@/lib/format";
-import { Empty, ProvenanceBadge } from "@/components/ui";
+import { Empty, ProvenanceBadge, TokenLogo, TokenStack } from "@/components/ui";
 import { Sparkline } from "@/components/Chart";
 
 export default function CreatorPage() {
@@ -37,9 +37,7 @@ export default function CreatorPage() {
 
       <div className="card card-pad row between wrap gap-20">
         <div className="row gap-16" style={{ alignItems: "flex-start", flexWrap: "nowrap", minWidth: 0 }}>
-          <span className="avatar" style={{ width: 54, height: 54, fontSize: 18, borderRadius: 14 }}>
-            {creator.handle.slice(0, 2).toUpperCase()}
-          </span>
+          <TokenStack markets={own.map((a) => a.market)} size={48} />
           <div className="stack gap-4" style={{ minWidth: 0 }}>
             <div className="row gap-8 wrap">
               <h1 className="page-title">{creator.name}</h1>
@@ -88,8 +86,13 @@ export default function CreatorPage() {
               {own.map((a) => (
                 <tr key={a.id} className="row-click">
                   <td>
+<div className="row gap-10" style={{ flexWrap: "nowrap" }}>
+                      <TokenLogo market={a.market} size={26} />
+                      <div className="stack" style={{ gap: 1, minWidth: 0 }}>
                     <Link href={`/agents/${a.id}`} className="strong">{a.name}</Link>
                     <div className="tiny">v{a.version} · {a.market}</div>
+                      </div>
+                    </div>
                   </td>
                   <td>
                     <span className={cx("badge", a.status === "live" ? "badge-green" : a.status === "paused" ? "badge-amber" : "badge-outline")}>

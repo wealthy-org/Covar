@@ -11,7 +11,7 @@ import { cx, dateOnly, dateTime, pct, pctSigned, timeAgo, usd } from "@/lib/form
 import { VAULT_ADDRESS } from "@/lib/chain";
 import { useMounted } from "@/lib/useMounted";
 import { LineChart } from "@/components/Chart";
-import { AgentAvatar, Empty, Field, Modal, useToast } from "@/components/ui";
+import { Empty, Field, Modal, TokenLogo, TokenStack, useToast } from "@/components/ui";
 import { OnChainVaultCard } from "@/components/ChainPanel";
 
 /**
@@ -323,7 +323,7 @@ export default function AgentPage() {
       {/* ------------------------------------ header ------------------------------------ */}
       <div className="detail-head">
         <div className="row gap-14" style={{ alignItems: "flex-start", flexWrap: "nowrap", minWidth: 0 }}>
-          <AgentAvatar name={agent.name} seed={agent.id} size={46} />
+          <TokenLogo market={agent.market} size={46} />
           <div className="stack gap-8" style={{ minWidth: 0 }}>
             <h1 className="page-title" style={{ fontSize: "clamp(26px, 2.6vw, 34px)" }}>
               {agent.name}
@@ -722,7 +722,7 @@ export default function AgentPage() {
           {/* 8 · creator */}
           {creator && (
             <Link href={`/creators/${creator.id}`} className="rcard rcard-pad creator-link">
-              <AgentAvatar name={creator.name} seed={creator.id} size={34} />
+              <TokenStack markets={agents.filter((a) => a.creatorId === creator.id).map((a) => a.market)} size={34} />
               <div className="stack" style={{ gap: 2, minWidth: 0 }}>
                 <span className="small strong" style={{ color: "var(--ink)" }}>
                   See every agent @{creator.handle} has run

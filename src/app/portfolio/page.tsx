@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { actions, useCovar } from "@/lib/store";
 import { cx, dateTime, shortAddr, usd } from "@/lib/format";
-import { Empty, ProvenanceBadge, useToast } from "@/components/ui";
+import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
 import { OnChainVaultCard } from "@/components/ChainPanel";
 import { WalletGate } from "@/components/WalletGate";
 
@@ -143,8 +143,13 @@ function PortfolioInner() {
                 {rows.map((r) => (
                   <tr key={r.agentId}>
                     <td>
+<div className="row gap-10" style={{ flexWrap: "nowrap" }}>
+                      <TokenLogo market={r.agent?.market ?? ""} size={26} />
+                      <div className="stack" style={{ gap: 1, minWidth: 0 }}>
                       <Link href={`/agents/${r.agentId}`} className="strong">{r.agent?.name ?? r.agentId}</Link>
                       <div className="tiny">{r.agent?.market}</div>
+                      </div>
+                    </div>
                     </td>
                     <td>{r.agent && <ProvenanceBadge kind={r.agent.provenance} />}</td>
                     <td className="right num">{r.shares.toFixed(2)}</td>
