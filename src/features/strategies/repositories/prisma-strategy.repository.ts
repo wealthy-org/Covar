@@ -1,5 +1,4 @@
-import { Prisma, PrismaClient } from "../../../generated/prisma/client";
-
+import { Prisma, PrismaClient } from "../../../../generated/prisma/client";
 import type { Strategy, StrategyId } from "../types/strategy.types";
 import type { StrategyRepository } from "./strategy.repository";
 import { validateStrategy } from "../validators/validate-strategy";
