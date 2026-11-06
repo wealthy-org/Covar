@@ -210,11 +210,18 @@ export function Sparkline({
   height?: number;
   color?: string;
 }) {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  // Defensive: records from older sessions or partial DB snapshots may carry no
+  // spark series at all. A chart that cannot draw must degrade to empty space,
+  // never take the whole page down.
+  const points = Array.isArray(data) ? data.filter((v) => Number.isFinite(v)) : [];
+  if (points.length < 2) {
+    return <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{ overflow: "visible" }} />;
+  }
+  const min = Math.min(...points);
+  const max = Math.max(...points);
   const span = max - min || 1;
-  const pts = data.map((v, i) => `${(i / Math.max(1, data.length - 1)) * width},${height - ((v - min) / span) * height}`);
-  const color = colorProp ?? (data[data.length - 1] >= data[0] ? "#137A4B" : "#B42318");
+  const pts = points.map((v, i) => `${(i / Math.max(1, points.length - 1)) * width},${height - ((v - min) / span) * height}`);
+  const color = colorProp ?? (points[points.length - 1] >= points[0] ? "#137A4B" : "#B42318");
   const d = `M${pts.join(" L")}`;
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{ overflow: "visible" }}>

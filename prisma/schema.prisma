@@ -8,13 +8,12 @@
 // uses no SQLite-specific types.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env(DATABASE_URL=postgresql://neondb_owner:npg_XMlPrY06LcDA@ep-young-sunset-azit8oem-pooler.c-3.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=requires)
+  url      = env("DATABASE_URL")
 }
 
 // Whole-session snapshot, synced from the client store. One row per device-session

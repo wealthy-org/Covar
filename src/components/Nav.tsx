@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -85,7 +86,7 @@ export function Nav() {
       <header className="nav">
         <div className="container nav-inner">
           <Link href="/" className="brand" aria-label="Covar home">
-            <span className="brand-mark">C</span>
+            <Image src="/logo.png" alt="" width={20} height={22} className="brand-logo" priority />
             <span>Covar</span>
           </Link>
 

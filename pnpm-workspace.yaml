@@ -1,5 +1,14 @@
 packages:
   - "."
 
+onlyBuiltDependencies:
+  - esbuild
+  - keccak
+  - secp256k1
+  - "@prisma/engines"
+  - "@prisma/client"
+  - prisma
+  - workerd
+
 allowBuilds:
   sharp: false

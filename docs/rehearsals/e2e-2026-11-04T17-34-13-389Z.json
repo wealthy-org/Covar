@@ -1,0 +1,105 @@
+{
+  "at": "2026-11-04T17:34:13.392Z",
+  "chainId": 31337,
+  "vault": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
+  "asset": "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9",
+  "labels": {
+    "venue": "paper venue (simulated fills) — a live venue adapter refuses all calls until reviewed",
+    "chain": "local hardhat EVM — not Robinhood Chain",
+    "tokens": "MockUSDG — must never leave the sandbox"
+  },
+  "checks": [
+    {
+      "name": "indexer healthy and pointed at the fresh vault",
+      "ok": true,
+      "detail": "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9"
+    },
+    {
+      "name": "deposit minted shares",
+      "ok": true,
+      "detail": "shares: 1979.9 · tx 0x8acb8f6ada7bf8f3…"
+    },
+    {
+      "name": "indexer reported the Deposit from chain logs",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "name": "execution plane healthy on rehearsal ports",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the intent was accepted but held, not traded",
+      "ok": true,
+      "detail": "status: queued"
+    },
+    {
+      "name": "no position opened while paused",
+      "ok": true,
+      "detail": "venue positions: 0"
+    },
+    {
+      "name": "vault reportedAssets unchanged while the trade was held",
+      "ok": true,
+      "detail": "1979.9 USDG"
+    },
+    {
+      "name": "no NAV change event while the order was held (funds/P&L untouched)",
+      "ok": false,
+      "detail": "NavReported events: 0 (the single pre-deposit report)"
+    },
+    {
+      "name": "the held order filled after resume",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "name": "venue position is exactly one 0.5 lot",
+      "ok": true,
+      "detail": "qty: 0.5"
+    },
+    {
+      "name": "vault reportedAssets still unchanged after the fill (no silent NAV write)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "investor received USDG back",
+      "ok": true,
+      "detail": "net change: -1020.0495 USDG"
+    },
+    {
+      "name": "indexer saw WithdrawalRequested",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "name": "indexer saw PositionsClosed",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "name": "indexer saw WithdrawalSettled",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "name": "indexer saw WithdrawalClaimed",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "name": "execution died after the venue ack (real process death)",
+      "ok": true,
+      "detail": "exit 137"
+    },
+    {
+      "name": "recovery adopted the in-flight order without resubmitting",
+      "ok": false,
+      "detail": "adopted [] · resubmitted []"
+    }
+  ],
+  "passed": 10,
+  "failed": 8
+}

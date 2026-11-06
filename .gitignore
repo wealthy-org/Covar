@@ -1,12 +1,22 @@
-node_modules
-.next
-out
-build
-dist
-coverage
+# dependencies & build output (regenerable from pnpm-lock.yaml)
+node_modules/
+.next/
+artifacts/
+cache/
+
+# runtime state of the execution plane & rehearsals (session-local, must never travel)
+.covar-state*/
+test-results/
+playwright-report/
+
+# secrets — never committed; keys selalu lewat environment
 .env
-.env.local
-.env.*.local
-*.log
-.DS_Store
-/src/generated/prisma/
+.env.*
+*.key
+*.pem
+
+# Prisma session database (regenerable via `pnpm exec prisma migrate deploy`)
+prisma/dev.db*
+
+# TS incremental build cache (regenerated)
+tsconfig.tsbuildinfo
