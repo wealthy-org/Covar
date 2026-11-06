@@ -14,7 +14,7 @@ export default function CreatorPage() {
 
   if (!creator) {
     return (
-      <div className="container section">
+      <div className="wrap-md page-pad">
         <Empty
           title="Creator not found"
           body="No creator with this id in the current session."
@@ -30,21 +30,19 @@ export default function CreatorPage() {
   const failed = own.filter((a) => a.returnPct < 0 || a.status === "paused");
 
   return (
-    <div className="container section-tight stack gap-24">
-      <div className="row gap-8 tiny">
-        <Link href="/explore" className="link-primary">Discover</Link>
-        <span>/</span>
-        <span>@{creator.handle}</span>
-      </div>
+    <div className="wrap-md page-pad stack gap-24">
+      <Link href="/explore" className="back-link" style={{ marginBottom: 0 }}>
+        ← Discover
+      </Link>
 
       <div className="card card-pad row between wrap gap-20">
-        <div className="row gap-16">
+        <div className="row gap-16" style={{ alignItems: "flex-start", flexWrap: "nowrap", minWidth: 0 }}>
           <span className="avatar" style={{ width: 54, height: 54, fontSize: 18, borderRadius: 14 }}>
             {creator.handle.slice(0, 2).toUpperCase()}
           </span>
-          <div className="stack gap-4">
-            <div className="row gap-8">
-              <h1 className="h2" style={{ fontSize: 28 }}>{creator.name}</h1>
+          <div className="stack gap-4" style={{ minWidth: 0 }}>
+            <div className="row gap-8 wrap">
+              <h1 className="page-title">{creator.name}</h1>
               {creator.verified && <span className="badge badge-blue">Verified identity</span>}
             </div>
             <span className="small muted">@{creator.handle} · joined {dateOnly(creator.joined)} · {creator.followers} followers</span>
@@ -73,7 +71,7 @@ export default function CreatorPage() {
           <span className="tiny">includes paused and negative agents — history is never filtered to winners</span>
         </div>
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-min">
             <thead>
               <tr>
                 <th>Agent</th>

@@ -49,13 +49,13 @@ function PortfolioInner() {
   });
 
   return (
-    <div className="container section-tight stack gap-24">
+    <div className="wrap-md page-pad stack gap-24">
       {node}
       <div className="row between wrap gap-16">
         <div className="stack gap-8" style={{ maxWidth: 620 }}>
-          <span className="eyebrow">My money</span>
-          <h1 className="h2">Accounts &amp; vault holdings</h1>
-          <p className="body">
+          <span className="label-dot">My money</span>
+          <h1 className="page-title">Accounts &amp; vault holdings</h1>
+          <p className="page-sub">
             Capital flows, trading P&amp;L and platform fees are kept in separate lines. A withdrawal request is tracked
             as pending until positions are closed and the claim settles.
           </p>
@@ -126,7 +126,7 @@ function PortfolioInner() {
           />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-min">
               <thead>
                 <tr>
                   <th>Agent</th>
@@ -212,7 +212,7 @@ function PortfolioInner() {
           <span className="tiny">ledger is append-only within a session</span>
         </div>
         <div className="table-wrap">
-          <table className="table">
+          <table className="table table-min">
             <thead>
               <tr>
                 <th>Time</th>

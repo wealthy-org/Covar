@@ -19,12 +19,12 @@ export default function ChainPage() {
   const { status, vault, vaultError, address, chain } = useChain();
 
   return (
-    <div className="container section-tight stack gap-20">
+    <div className="wrap-md page-pad stack gap-20">
       <div className="row between wrap gap-16">
         <div className="stack gap-8" style={{ maxWidth: 660 }}>
-          <span className="eyebrow">Chain</span>
-          <h1 className="h2">Deployment &amp; on-chain state</h1>
-          <p className="body">
+          <span className="label-dot">Chain</span>
+          <h1 className="page-title">Deployment &amp; on-chain state</h1>
+          <p className="page-sub">
             Covar deploys testnet first (46630), runs the full suite, proves the complete deposit → trade → withdraw
             path, and only then moves to mainnet (4663) with a small controlled value. This page reports what is actually
             deployed — not what is planned.
@@ -109,7 +109,7 @@ export default function ChainPage() {
           <OnChainVaultCard showLinks={false} />
           {vault && (
             <div className="table-wrap panel">
-              <table className="table">
+              <table className="table table-min">
                 <thead>
                   <tr>
                     <th>Parameter</th>

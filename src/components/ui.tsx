@@ -191,3 +191,30 @@ export function useToast() {
   const node = msg ? <Toast message={msg} onDone={() => setMsg(null)} /> : null;
   return { toast: setMsg, node };
 }
+
+/* Coloured initial disc used for agents across Discover, detail and portfolio. */
+const AVATAR_TONES = ["#3B5BDB", "#2F49B5", "#3D6FA8", "#5B5BD6", "#4A5FBF", "#385B8C"];
+export function AgentAvatar({ name, seed, size = 28 }: { name: string; seed: string; size?: number }) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: AVATAR_TONES[h % AVATAR_TONES.length],
+        color: "#fff",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "var(--font-mono)",
+        fontSize: Math.round(size * 0.4),
+        flex: "0 0 auto",
+      }}
+    >
+      {name.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}

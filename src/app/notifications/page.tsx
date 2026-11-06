@@ -19,12 +19,12 @@ export default function NotificationsPage() {
   const unread = notifications.filter((n) => !n.read).length;
 
   return (
-    <div className="container section-tight stack gap-20" style={{ maxWidth: 760 }}>
+    <div className="wrap-md page-pad stack gap-20" style={{ maxWidth: 760 }}>
       <div className="row between wrap gap-16">
         <div className="stack gap-8">
-          <span className="eyebrow">Inbox</span>
-          <h1 className="h2">Notifications</h1>
-          <p className="tiny" style={{ maxWidth: 560 }}>
+          <span className="label-dot">Inbox</span>
+          <h1 className="page-title">Notifications</h1>
+          <p className="page-sub">
             Every entry below is written by something that actually happened in this session — a practice run started or
             stopped, an agent published, money moving off a request. There are no marketing pushes and no fake alerts. An
             empty inbox simply means nothing has happened yet.

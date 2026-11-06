@@ -66,3 +66,42 @@ Legend — **Impl**: `done`, `partial`, `stub`, `pending`.
 2. Ranking: backtests excluded and young agents marked, to keep provenance honest.
 3. Fee model: reference behaviour preserved; the high-water-mark proposal is **not** implemented.
 4. Token/staking pages state "not implemented" instead of illustrating mechanics that do not exist.
+5. **Landing (6 Nov 2026 pass)** — layout, spacing, section order, nav, hero card, Build/Follow cards,
+   rules→Copilot→risk chain, four proof cards, chips, AI-layer cards, two-column FAQ and centred CTA now
+   mirror the reference section-for-section (owner screen recording, keyframes in
+   `docs/reference/video-2026-11-06/`; result `screenshots/01-landing.png`). 3D art is our own render
+   in cobalt (`public/landing/`), never the reference's files. Copy differs only where the reference
+   sentence would be false for this build:
+   - "trades it on Lighter perps" → "runs it in practice before a cent is at stake" (venue is paper).
+   - "Real Lighter prices" / "live prices" → "Seeded history, explicit costs" / "Pretend money, clearly
+     labelled" (backtest uses a seeded price path; practice falls back to simulated ticks when the feed
+     is down — E2E honesty invariant forbids "live prices").
+   - "Replayed a year of SOL in ~30 s" → "Replayed a year of SOL, costs included."
+   - "It reads the market (news, X, on-chain)" → "It reads the setup like you do" (context tools not built).
+   - "tuned on Lighter order-book data we record ourselves" → costs charged per fill and printed per run.
+   - "Built on Lighter" → "Built for Robinhood Chain"; "First AI agents on Robinhood Chain · Lighter perps"
+     → "Risk-engine allowlist · perps" with the real allowlist (BTC/ETH/SOL/HYPE/USDG).
+   - "Built on Orbio" section → "AI layer" (Copilot uses a model-provider seam; Orbio not integrated).
+   - Follow tagged **SOON**, same as the reference: vaults are tested but not deployed.
+6. **App pages + nav + responsive (6 Nov 2026, second recording)** — keyframe sheets in
+   `docs/reference/video-2026-11-06-app/`. One nav everywhere: contract strip (address or "not deployed
+   yet", network, COPY / explorer) → DISCOVER / MY AGENTS / MY MONEY / MORE▾ with the bell, "+ NEW AGENT"
+   and the wallet button on app pages and a single LAUNCH APP on `/`, `/economics`, `/treasury`; hamburger
+   drawer below 960 px. Compact footer. Shared page header (accent-dot label, regular-weight title, mono
+   subtitle) and reference widths (≈1148 discover, ≈1396 agent, 200+680 docs, ≈1120 economics/treasury).
+   - Discover: LIVE VAULTS table card + AGENT ARENA practice cards, as the reference. Kept as ours: a
+     separate "Backtests · not ranked" block, and the subtitle says index rows are seeded demo data.
+   - Agent: main column (return + chart + stat strip, what it is doing | recent decisions, full record with
+     CSV, about, how it trades | risk limits, how it stays up to date | versions, where your money goes) +
+     sticky vault/deposit sidebar ("Connect to deposit" when signed out). "What the agent is doing" is a
+     factual roll-up of the decision log, not written prose. Contract row shows "demo record · not
+     deployed" unless the seeded address equals the configured vault. Reference token card and venue
+     cross-check are omitted (no token, paper venue).
+   - Economics: sankey of the fee *rules* (band width = rule share, no volumes) and a disabled
+     "Stake · coming soon" panel — no staking contract exists.
+   - Treasury: "Every fee, accounted." (reference says "on-chain"; nothing is on-chain). Figures relabelled
+     **illustrative accounting model**; "Recent buybacks" replaced by "Buyback & burn · not active".
+     Fixed a pre-existing error: creator payouts were subtracted from platform receipts, giving a negative
+     "Distributable" — they are now netted against gross creator fees only.
+   - Checked at 360 / 390 / 768 / 1024 / 1280 / 1440 / 1918 px on every route: no horizontal overflow,
+     wide tables scroll inside their card, sidebar stacks first on tablet/mobile, docs TOC becomes chips.

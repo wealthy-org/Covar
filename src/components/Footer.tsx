@@ -1,59 +1,73 @@
 import Image from "next/image";
 import Link from "next/link";
 
+const COLS: { title: string; links: { href: string; label: string; ext?: boolean }[] }[] = [
+  {
+    title: "Product",
+    links: [
+      { href: "/explore", label: "Discover" },
+      { href: "/studio", label: "My agents" },
+      { href: "/portfolio", label: "My money" },
+      { href: "/economics", label: "Economics" },
+      { href: "/treasury", label: "Treasury" },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { href: "/docs", label: "Docs" },
+      { href: "/docs#fees", label: "Fees & custody" },
+      { href: "/docs#risk", label: "Risk controls" },
+      { href: "/chain", label: "Chain status" },
+      { href: "/docs#parity", label: "Parity register" },
+    ],
+  },
+  {
+    title: "Reference",
+    links: [
+      { href: "https://www.sharpe.ac/", label: "Sharpe (reference)", ext: true },
+      { href: "https://docs.robinhood.com/chain/", label: "Robinhood Chain docs", ext: true },
+      { href: "https://docs.lighter.xyz/", label: "Lighter docs", ext: true },
+    ],
+  },
+];
+
 export function Footer() {
   return (
     <footer className="footer">
-      <div className="container footer-inner">
-        <div className="stack gap-12">
-          <div className="brand" style={{ marginBottom: 10 }}>
+      <div className="footer-inner">
+        <div className="footer-brand">
+          <Link href="/" className="brand" aria-label="Covar home">
             <Image src="/logo.png" alt="" width={20} height={22} className="brand-logo" />
             <span>Covar</span>
-          </div>
-          <p className="small" style={{ maxWidth: 280 }}>
-            Strategy agents with published rules, versioned history and vaults on Robinhood Chain. Built as a direct
-            functional mirror of the reference product; differentiating features land after parity is reviewable.
+          </Link>
+          <p className="small" style={{ margin: 0 }}>
+            Strategy agents with published rules, versioned history and vaults on Robinhood Chain.
           </p>
-          <span className="tiny">Development build · Robinhood Chain testnet 46630 · no real value at risk</span>
         </div>
-
-        <div className="stack">
-          <span className="upper" style={{ color: "var(--muted-2)", marginBottom: 6 }}>
-            Product
-          </span>
-          <Link className="footer-link" href="/explore">Discover agents</Link>
-          <Link className="footer-link" href="/studio">Studio</Link>
-          <Link className="footer-link" href="/portfolio">My Money</Link>
-          <Link className="footer-link" href="/economics">Economics</Link>
+        <div className="footer-cols">
+          {COLS.map((c) => (
+            <div key={c.title} className="footer-col">
+              <span className="footer-col-title">{c.title}</span>
+              {c.links.map((l) =>
+                l.ext ? (
+                  <a key={l.href} className="footer-link" href={l.href} target="_blank" rel="noreferrer noopener">
+                    {l.label} ↗
+                  </a>
+                ) : (
+                  <Link key={l.href} className="footer-link" href={l.href}>
+                    {l.label}
+                  </Link>
+                )
+              )}
+            </div>
+          ))}
         </div>
-
-        <div className="stack">
-          <span className="upper" style={{ color: "var(--muted-2)", marginBottom: 6 }}>
-            Resources
-          </span>
-          <Link className="footer-link" href="/docs">Documentation</Link>
-          <Link className="footer-link" href="/docs#fees">Fees &amp; custody</Link>
-          <Link className="footer-link" href="/docs#risk">Risk controls</Link>
-          <Link className="footer-link" href="/docs#parity">Parity register</Link>
-          <Link className="footer-link" href="/chain">Chain status</Link>
-        </div>
-
-        <div className="stack">
-          <span className="upper" style={{ color: "var(--muted-2)", marginBottom: 6 }}>
-            Reference
-          </span>
-          <a className="footer-link" href="https://www.sharpe.ac/" target="_blank" rel="noreferrer noopener">
-            Sharpe (reference product)
-          </a>
-          <a className="footer-link" href="https://docs.robinhood.com/chain/" target="_blank" rel="noreferrer noopener">
-            Robinhood Chain docs
-          </a>
-          <a className="footer-link" href="https://docs.lighter.xyz/" target="_blank" rel="noreferrer noopener">
-            Lighter docs
-          </a>
-          <a className="footer-link" href="https://www.orbio.so/" target="_blank" rel="noreferrer noopener">
-            Orbio
-          </a>
+      </div>
+      <div className="footer-base">
+        <div className="footer-base-inner">
+          <span>Development build · Robinhood Chain testnet 46630 · no real value at risk</span>
+          <span>© {new Date().getFullYear()} Covar</span>
         </div>
       </div>
     </footer>

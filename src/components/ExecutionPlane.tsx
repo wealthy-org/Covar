@@ -321,7 +321,7 @@ export function ExecutionPlane() {
             <span className="small">Flat. No fills have been applied in this process.</span>
           ) : (
             <div className="table-wrap">
-              <table className="table">
+              <table className="table table-min">
                 <thead>
                   <tr>
                     <th>Market</th>
@@ -372,7 +372,7 @@ export function ExecutionPlane() {
           </span>
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-min">
               <thead>
                 <tr>
                   <th>Client order id</th>
@@ -432,7 +432,7 @@ export function ExecutionPlane() {
           <span className="small">The journal file is empty.</span>
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-min">
               <thead>
                 <tr>
                   <th className="right">seq</th>

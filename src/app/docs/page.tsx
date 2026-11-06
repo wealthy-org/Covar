@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DocsToc } from "@/components/DocsToc";
 
 const SECTIONS = [
   { id: "overview", label: "Overview" },
@@ -15,38 +16,42 @@ const SECTIONS = [
 
 export default function DocsPage() {
   return (
-    <div className="container section-tight">
-      <div className="three-col">
-        <aside className="col-side-l sticky-side">
-          <div className="stack gap-4">
-            <span className="tiny strong" style={{ textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              Documentation
-            </span>
-            {SECTIONS.map((s) => (
-              <a key={s.id} href={`#${s.id}`} className="footer-link">
-                {s.label}
-              </a>
-            ))}
-          </div>
+    <div className="wrap-md page-pad">
+      <div className="page-head docs-head">
+        <span className="label-dot">Docs</span>
+        <h1 className="page-title">Covar operator &amp; user documentation</h1>
+        <p className="page-sub">
+          Covar is built as a direct functional mirror of the reference product ({'"'}Sharpe{'"'}) under our own identity, with
+          the approved muted-cobalt palette. This page documents what the current build actually does — including what it
+          does not do yet.
+        </p>
+      </div>
+
+      <div className="docs-grid">
+        <aside className="docs-side">
+          <DocsToc sections={SECTIONS} />
         </aside>
 
-        <article className="card card-pad prose" style={{ maxWidth: 800 }}>
-          <span className="eyebrow">Docs</span>
-          <h1 className="h2" style={{ marginTop: 8 }}>
-            Covar operator &amp; user documentation
-          </h1>
-          <p style={{ marginTop: 12 }}>
-            Covar is built as a direct functional mirror of the reference product ({'"'}Sharpe{'"'}) under our own identity,
-            with the approved muted-cobalt palette. This page documents what the current build actually does — including
-            what it does not do yet.
-          </p>
-
+        <article className="prose docs-article">
           <h2 id="overview">Overview</h2>
           <p>
             A creator describes a strategy, reviews the typed rule set, backtests it, runs it in practice and publishes a
             version. An investor browses agents, reads the record and its provenance, funds a vault, and can request and
             claim a withdrawal. Drafts and published versions are separate objects; editing a draft never silently alters
             what investors fund.
+          </p>
+
+          <div className="docs-kv">
+            <div><span>Network</span><span>Testnet 46630</span></div>
+            <div><span>Contracts compiled</span><span>2 · suite green</span></div>
+            <div><span>Contracts deployed</span><span>None</span></div>
+            <div><span>Real value at risk</span><span>$0</span></div>
+          </div>
+          <p>
+            The web surface, the four-process execution plane and the vault indexer are reviewable now. The venue is a paper
+            matcher and contracts exist only on the local rehearsal chain — zero contracts on Robinhood Chain. See{" "}
+            <Link className="link-primary" href="/chain">Chain status</Link> or{" "}
+            <Link className="link-primary" href="/studio?new=1">open Studio</Link>.
           </p>
 
           <h2 id="network">Network &amp; deployment</h2>
@@ -206,34 +211,6 @@ export default function DocsPage() {
           </ul>
         </article>
 
-        <aside className="col-side-r sticky-side">
-          <div className="card card-pad stack gap-10">
-            <span className="small strong">Build status</span>
-            <div className="row between">
-              <span className="tiny">Network</span>
-              <span className="small strong">Testnet 46630</span>
-            </div>
-            <div className="row between">
-              <span className="tiny">Contracts compiled</span>
-              <span className="small strong">2 · suite green</span>
-            </div>
-            <div className="row between">
-              <span className="tiny">Contracts deployed</span>
-              <span className="small strong">None</span>
-            </div>
-            <div className="row between">
-              <span className="tiny">Real value at risk</span>
-              <span className="small strong">$0</span>
-            </div>
-            <hr className="divider" />
-            <span className="tiny">
-              The web surface, the four-process execution plane and the vault indexer are reviewable now. The venue is
-              a paper matcher and contracts exist only on the local rehearsal chain — zero contracts on Robinhood Chain.
-            </span>
-            <Link href="/chain" className="btn btn-secondary btn-sm">Chain status</Link>
-            <Link href="/studio?new=1" className="btn btn-primary btn-sm">Open Studio</Link>
-          </div>
-        </aside>
       </div>
     </div>
   );

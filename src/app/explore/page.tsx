@@ -1,228 +1,264 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useCovar } from "@/lib/store";
-import { ProvenanceBadge } from "@/components/ui";
+import { AgentAvatar } from "@/components/ui";
+import { Sparkline } from "@/components/Chart";
 import { PROVENANCE_LABEL } from "@/lib/types";
 import { cx, pct, pctSigned, usd } from "@/lib/format";
-import type { Agent, Provenance } from "@/lib/types";
+import type { Agent } from "@/lib/types";
 
 /**
- * Reference layout: page title + one-line subtitle, a tab row with the sort
- * control on the right, then a single table. Provenance is not a filter chip
- * bolted on afterwards — it is a column, and a tab boundary.
+ * Reference layout (sharpe.ac /discover): title + mono subtitle, underline tabs
+ * LIVE VAULTS / AGENT ARENA with SORT BY on the right, then one white table card
+ * (vaults) or a grid of practice cards (arena). Backtests are shown in the arena
+ * under their own heading and are never ranked against real records.
  */
-const TABS: { id: string; label: string; blurb: string }[] = [
-  { id: "vaults", label: "Live vaults", blurb: "Agents with real-money records and an open vault." },
-  { id: "all", label: "Agent arena", blurb: "Every agent, whatever its record." },
-  { id: "research", label: "Backtests", blurb: "Reproducible research runs. Not investable, never ranked." },
-];
+type Tab = "vaults" | "arena";
 
 const SORTS = [
   { id: "tvl", label: "TVL" },
   { id: "score", label: "Covar score" },
   { id: "return", label: "Return" },
-  { id: "drawdown", label: "Smallest drawdown" },
+  { id: "drawdown", label: "Smallest drop" },
   { id: "age", label: "Longest record" },
 ] as const;
+type SortId = (typeof SORTS)[number]["id"];
 
-const TONES = ["#3B5BDB", "#2F49B5", "#3D6FA8", "#5B5BD6", "#4A5FBF", "#385B8C"];
+const sorter = (sort: SortId) => (a: Agent, b: Agent) => {
+  switch (sort) {
+    case "return":
+      return b.returnPct - a.returnPct;
+    case "tvl":
+      return b.tvlUsd - a.tvlUsd;
+    case "drawdown":
+      return b.drawdownPct - a.drawdownPct;
+    case "age":
+      return b.liveAgeDays - a.liveAgeDays;
+    default:
+      return b.score - a.score;
+  }
+};
 
-function Avatar({ agent, index }: { agent: Agent; index: number }) {
+const RECORD_LABEL: Record<Agent["provenance"], string> = {
+  practice: "Practice return · pretend money",
+  testnet: "Test-exchange return · test funds",
+  backtest: "Backtest return · history replay",
+  live: "Live return",
+  vault: "Vault share price",
+};
+
+const PILL: Record<Agent["provenance"], string> = {
+  practice: "pill pill-accent",
+  testnet: "pill pill-amber",
+  backtest: "pill",
+  live: "pill pill-ink",
+  vault: "pill pill-ink",
+};
+
+function ArenaCard({ agent }: { agent: Agent }) {
+  const up = agent.returnPct >= 0;
+  const days = Math.max(1, agent.liveAgeDays || agent.curve.length);
   return (
-    <span
-      aria-hidden
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        background: TONES[index % TONES.length],
-        color: "#fff",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        flex: "0 0 auto",
-      }}
-    >
-      {agent.name.slice(0, 1).toUpperCase()}
-    </span>
+    <Link href={`/agents/${agent.id}`} className="rcard arena-card">
+      <div className="row gap-10" style={{ minWidth: 0 }}>
+        <AgentAvatar name={agent.name} seed={agent.id} size={30} />
+        <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+          <span className="strong truncate" style={{ fontSize: 14.5, color: "var(--ink)" }}>
+            {agent.name}
+          </span>
+          <span className="tiny mono">
+            {agent.market} · {agent.timeframe}
+          </span>
+        </div>
+        <span className="spacer" />
+        <span className={PILL[agent.provenance]}>{agent.provenance}</span>
+      </div>
+
+      <div className="stack" style={{ gap: 4 }}>
+        <span className="stat-label">{RECORD_LABEL[agent.provenance]}</span>
+        <span className="mono-num" style={{ fontSize: 30, lineHeight: 1.1, color: up ? "var(--positive)" : "var(--negative)" }}>
+          {pctSigned(agent.returnPct)}
+        </span>
+      </div>
+
+      <Sparkline data={agent.curve} width={300} height={56} fluid color={up ? "#137A4B" : "#B42318"} />
+
+      <div className="arena-stats">
+        <div className="stack" style={{ gap: 2 }}>
+          <span className="stat-label">Trades</span>
+          <span className="mono-num">{agent.tradeCount}</span>
+        </div>
+        <div className="stack" style={{ gap: 2 }}>
+          <span className="stat-label">Worst drop</span>
+          <span className="mono-num neg">{pct(agent.drawdownPct)}</span>
+        </div>
+        <div className="stack" style={{ gap: 2 }}>
+          <span className="stat-label">{agent.provenance === "backtest" ? "Replayed" : "Running for"}</span>
+          <span className="mono-num">{days}d</span>
+        </div>
+      </div>
+
+      <span className="accent-link" style={{ fontSize: 11 }}>
+        See its trades and history →
+      </span>
+    </Link>
   );
 }
 
 export default function ExplorePage() {
+  const router = useRouter();
   const { agents, creators } = useCovar();
-  const [tab, setTab] = useState("vaults");
-  const [sort, setSort] = useState<(typeof SORTS)[number]["id"]>("tvl");
-  const [market, setMarket] = useState("all");
-  const [q, setQ] = useState("");
+  const [tab, setTab] = useState<Tab>("vaults");
+  const [sort, setSort] = useState<SortId>("tvl");
 
-  const markets = useMemo(() => Array.from(new Set(agents.map((a) => a.market))).sort(), [agents]);
-
-  const list = useMemo(() => {
-    let out = agents.filter((a) => {
-      if (tab === "vaults") return a.provenance === "live" && !!a.vault;
-      if (tab === "research") return a.provenance === "backtest";
-      return true;
-    });
-    if (market !== "all") out = out.filter((a) => a.market === market);
-    if (q.trim()) {
-      const needle = q.toLowerCase();
-      out = out.filter((a) => (a.name + a.tagline + a.market).toLowerCase().includes(needle));
-    }
-    return [...out].sort((a, b) => {
-      switch (sort) {
-        case "return":
-          return b.returnPct - a.returnPct;
-        case "tvl":
-          return b.tvlUsd - a.tvlUsd;
-        case "drawdown":
-          return b.drawdownPct - a.drawdownPct;
-        case "age":
-          return b.liveAgeDays - a.liveAgeDays;
-        default:
-          return b.score - a.score;
-      }
-    });
-  }, [agents, tab, market, q, sort]);
-
+  const vaults = useMemo(() => agents.filter((a) => a.provenance === "live" && !!a.vault).sort(sorter(sort)), [agents, sort]);
+  const arena = useMemo(
+    () => agents.filter((a) => a.provenance === "practice" || a.provenance === "testnet").sort(sorter(sort === "tvl" ? "return" : sort)),
+    [agents, sort]
+  );
+  const backtests = useMemo(() => agents.filter((a) => a.provenance === "backtest"), [agents]);
   const creatorOf = (id: string) => creators.find((c) => c.id === id);
-  const activeTab = TABS.find((t) => t.id === tab)!;
+  const running = arena.filter((a) => a.status === "practice" || a.status === "live").length;
 
   return (
-    <div className="container section-tight stack gap-20">
-      {/* header */}
-      <div className="stack gap-6" style={{ paddingTop: 8 }}>
-        <h1 className="h2">Discover</h1>
-        <p className="small">{activeTab.blurb}</p>
+    <div className="wrap-md page-pad">
+      <div className="page-head">
+        <h1 className="page-title">Discover</h1>
+        <p className="page-sub">
+          {tab === "vaults"
+            ? "Agents with a real-money record and an open vault. Index rows in this build are seeded demo data."
+            : "Agents still proving themselves with pretend money or test funds. Nothing here takes deposits."}
+        </p>
       </div>
 
-      {/* tabs + sort */}
-      <div className="row between wrap gap-12">
-        <div className="tabs" style={{ border: 0 }}>
-          {TABS.map((t) => (
-            <button key={t.id} className="tab" data-active={tab === t.id} onClick={() => setTab(t.id)}>
-              {t.label}
+      <div className="row between gap-12 wrap" style={{ borderBottom: "1px solid var(--border)", marginBottom: 22 }}>
+        <div className="utabs" role="tablist" style={{ borderBottom: 0 }}>
+          {(
+            [
+              ["vaults", "Live vaults"],
+              ["arena", "Agent arena"],
+            ] as const
+          ).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} className="utab" data-active={tab === id} onClick={() => setTab(id)}>
+              {label}
             </button>
           ))}
         </div>
-
-        <div className="row gap-8 wrap">
-          <span className="upper" style={{ color: "var(--muted-2)" }}>
-            Sort by
-          </span>
-          <select
-            className="select"
-            style={{ width: 168, minHeight: 32, height: 32, fontSize: 12.5, padding: "0 8px" }}
-            value={sort}
-            onChange={(e) => setSort(e.target.value as typeof sort)}
-            aria-label="Sort agents"
-          >
+        <label className="row gap-8" style={{ paddingBottom: 8 }}>
+          <span className="stat-label">Sort by</span>
+          <select className="select select-sm" value={sort} onChange={(e) => setSort(e.target.value as SortId)} aria-label="Sort agents">
             {SORTS.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
               </option>
             ))}
           </select>
+        </label>
+      </div>
+
+      {tab === "vaults" ? (
+        <>
+          <div className="table-wrap">
+            <table className="table table-rows">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th className="hide-sm">Creator</th>
+                  <th className="right hide-sm">Fee</th>
+                  <th className="right">Return</th>
+                  <th className="right hide-md">Covar score</th>
+                  <th className="right">TVL</th>
+                  <th className="right hide-sm">Age</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vaults.map((a) => (
+                  <tr key={a.id} className="row-click" onClick={() => router.push(`/agents/${a.id}`)}>
+                    <td>
+                      <div className="row gap-10" style={{ flexWrap: "nowrap" }}>
+                        <AgentAvatar name={a.name} seed={a.id} />
+                        <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+                          <span className="row gap-8" style={{ flexWrap: "nowrap" }}>
+                            <Link href={`/agents/${a.id}`} className="table-strong" style={{ color: "var(--ink)", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                              {a.name}
+                            </Link>
+                            <span className="tagbox hide-xs">{a.market}</span>
+                          </span>
+                          <span className="tiny mono">
+                            {PROVENANCE_LABEL[a.provenance].toLowerCase()} · {a.status === "live" ? "operating" : a.status.replace("_", " ")}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="mono tiny hide-sm">@{creatorOf(a.creatorId)?.handle ?? "you"}</td>
+                    <td className="right hide-sm">≤20%</td>
+                    <td className={cx("right", a.returnPct >= 0 ? "pos" : "neg")}>{pctSigned(a.returnPct)}</td>
+                    <td className="right hide-md">{a.score ? a.score.toFixed(2) : "—"}</td>
+                    <td className="right">{usd(a.tvlUsd || 0, { compact: true })}</td>
+                    <td className="right hide-sm">{a.liveAgeDays ? `${a.liveAgeDays}d` : "—"}</td>
+                  </tr>
+                ))}
+                {vaults.length === 0 && (
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: "center", padding: 32 }}>
+                      <span className="small">No live vaults yet.</span>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="mono-note" style={{ marginTop: 18, maxWidth: 980 }}>
+            Return is net of fees and costs over the agent&apos;s own record. An agent under 7 days live shows its practice figures
+            (marked practice), then its own live run, then its vault&apos;s record once that has 7 days of share price. Backtests
+            never enter the ranking. Past results don&apos;t promise future ones.
+          </p>
+        </>
+      ) : (
+        <div className="stack gap-24">
+          <span className="stat-label">
+            {arena.length} agent{arena.length === 1 ? "" : "s"} · {running} running
+          </span>
+          {arena.length > 0 ? (
+            <div className="arena-grid">
+              {arena.map((a) => (
+                <ArenaCard key={a.id} agent={a} />
+              ))}
+            </div>
+          ) : (
+            <div className="rcard rcard-pad small">No agents are practising right now.</div>
+          )}
+
+          <div className="rcard arena-banner">
+            <div className="stack" style={{ gap: 4 }}>
+              <span className="strong" style={{ color: "var(--ink)", fontSize: 15 }}>
+                Have a strategy idea?
+              </span>
+              <span className="small">Describe it in plain words. Covar builds the agent, backtests it, then lets it practise here.</span>
+            </div>
+            <Link href="/studio?new=1" className="btn-ink">
+              Open studio →
+            </Link>
+          </div>
+
+          {backtests.length > 0 && (
+            <section className="stack gap-14">
+              <div className="stack" style={{ gap: 4 }}>
+                <span className="label-dot">Backtests · not ranked</span>
+                <span className="mono-note">Reproducible history replays. Not investable and never compared with real records.</span>
+              </div>
+              <div className="arena-grid">
+                {backtests.map((a) => (
+                  <ArenaCard key={a.id} agent={a} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
-      </div>
-
-      {/* search + market, second row */}
-      <div className="row wrap gap-8">
-        <input
-          className="input"
-          style={{ width: 240, minHeight: 32, height: 32, fontSize: 13 }}
-          placeholder="Search agents…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          aria-label="Search agents"
-        />
-        <select
-          className="select"
-          style={{ width: 150, minHeight: 32, height: 32, fontSize: 12.5, padding: "0 8px" }}
-          value={market}
-          onChange={(e) => setMarket(e.target.value)}
-          aria-label="Filter by market"
-        >
-          <option value="all">All markets</option>
-          {markets.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-        <span className="spacer" />
-        <span className="tiny mono">
-          {list.length} agent{list.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {/* table */}
-      <div className="table-wrap">
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Agent</th>
-              <th>Creator</th>
-              <th className="right">Fee</th>
-              <th className="right">Return</th>
-              <th className="right">Max DD</th>
-              <th className="right">Covar score</th>
-              <th className="right">TVL</th>
-              <th className="right">Age (days)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((a, i) => (
-              <tr key={a.id} onClick={() => (window.location.href = `/agents/${a.id}`)} style={{ cursor: "pointer" }}>
-                <td>
-                  <div className="row gap-10">
-                    <Avatar agent={a} index={i} />
-                    <div className="stack" style={{ gap: 1, minWidth: 0 }}>
-                      <Link href={`/agents/${a.id}`} className="row gap-6" style={{ color: "var(--foreground)" }}>
-                        <span className="table-strong">{a.name}</span>
-                        <span className="market-chip">{a.market}</span>
-                      </Link>
-                      <span className="tiny">
-                        {PROVENANCE_LABEL[a.provenance]} · {a.status === "live" ? "operating" : a.status}
-                      </span>
-                    </div>
-                  </div>
-                </td>
-                <td className="mono tiny">@{creatorOf(a.creatorId)?.handle ?? "you"}</td>
-                <td className="right mono tiny">≤20%</td>
-                <td className={cx("right num", a.returnPct >= 0 ? "pos" : "neg")}>{pctSigned(a.returnPct)}</td>
-                <td className="right num neg">{pct(a.drawdownPct)}</td>
-                <td className="right num">{a.score ? a.score.toFixed(2) : "—"}</td>
-                <td className="right num">{a.tvlUsd ? usd(a.tvlUsd) : "$0.00"}</td>
-                <td className="right num">{a.liveAgeDays || "—"}</td>
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: 28 }}>
-                  <span className="small">No agents in this tab yet.</span>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="row gap-8 wrap">
-        {(["live", "practice", "testnet", "backtest"] as Provenance[]).map((p) => (
-          <ProvenanceBadge key={p} kind={p} />
-        ))}
-      </div>
-
-      <p className="tiny mono" style={{ maxWidth: 980, lineHeight: 1.8 }}>
-        Return is net of fees and costs over the agent&apos;s own record. An agent under 7 days live shows its practice
-        figures (marked <em>practice</em>), then its own live run, then its vault&apos;s record once that has 7 days of
-        share price. Backtests live in their own tab and never enter the ranking. Past results don&apos;t promise future
-        ones.
-      </p>
+      )}
     </div>
   );
 }

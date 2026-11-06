@@ -31,7 +31,7 @@ export function WalletGate({
   if (walletConnected) return <>{children}</>;
 
   return (
-    <div className="container">
+    <div className="wrap-md page-pad">
       <div className="card gate-card stack gap-16">
         <div className="stack gap-8">
           <h1 className="h3">{title}</h1>

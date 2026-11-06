@@ -494,7 +494,7 @@ export function Builder() {
                   </div>
 
                   <div className="panel table-wrap">
-                    <table className="table">
+                    <table className="table table-min">
                       <thead>
                         <tr>
                           <th>#</th>

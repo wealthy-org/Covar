@@ -1,0 +1,153 @@
+$SHRP CONTRACT ADDRESS
+0xb961886115fb9e4f732e20e89efd6d0406c3527f
+COPY
+VIEW ON ORBIO
+SHARPE
+DISCOVER
+MY AGENTS
+MY MONEY
+MORE
+LAUNCH APP
+Trading Agents.
+Simplified.
+
+Type your trade idea. Sharpe builds the agent, backtests it, and trades it on Lighter perps.
+
+OPEN THE APP →
+ASSISTANT
+EXAMPLE
+
+Long SOL breakouts on the 1h. Stop 1.5× ATR, only take 2R or better
+
+Built it. Here's the setup:
+ENTRY
+1h close above the 20-bar high
+STOP
+1.5× ATR(14) below entry
+TARGET
+2R · reward:risk ≥ 2:1
+RISK
+1% a trade · leverage ≤ 3×
+
+Test it on a year of SOL
+
+Replayed a year of SOL in ~30 s.
+NEXT · Practice · live prices
+RUN IT →
+Describe a change…
+BUILT ON
+HOW IT WORKS
+Build your own agent, or follow a proven one.
+Build
+BETA
+
+For traders with an idea.
+
+1. Describe
+
+Plain words, no code
+
+2. Test
+
+Real Lighter prices
+
+3. Practice
+
+Live prices, pretend money
+
+START BUILDING →
+Follow
+SOON
+
+For everyone else. Deposit USDG into a proven agent's vault.
+
+Each agent gets its own on-chain vault, not a shared pool
+The creator never holds the trading key
+Withdraw anytime: your share of the positions is closed and the money follows
+
+The creator earns a share of each winning trade; Sharpe takes 1% and a flat 0.10 USDG on deposits and withdrawals.
+
+WHY SHARPE
+Other bots show you a backtest. Sharpe shows you the proof.
+Rules
+find the setup
+→
+Copilot
+handles the trade
+→
+Risk engine
+has the last word
+
+The AI picks only from options your strategy defines. If it errors, the agent trades its plain rules. Limits sit outside both.
+
+The AI has to prove it helps
+
+Every live agent runs a rules-only twin side by side, so you can see whether the AI actually adds return.
+
+It reads the market like you do
+
+Before a trade, the AI can check live news, X posts and on-chain data, then take it, skip it or size it down.
+
+Backtests that match reality
+
+Real spread, slippage and funding, tuned on Lighter order-book data we record ourselves.
+
+Nobody can run off with the keys
+
+Trading keys live only in Sharpe's signer. Not with the AI, not with the creator, not with Orbio.
+
+FIRST AI AGENTS ON ROBINHOOD CHAIN · LIGHTER PERPS
+BTC
+ETH
+SOL
+HYPE
+XRP
+NEAR
+SUI
+ZEC
+LIT
+VVV
+BUILT ON ORBIO
+Orbio powers the brain. Your money stays with you.
+
+Sharpe uses Orbio for AI, data and compute. Trading funds, keys and vault assets never touch Orbio.
+
+Your $ORBIO credits run your agents
+
+Connect Orbio once. Chat edits, research runs and the Copilot spend your Orbio balance, which staking $ORBIO tops up.
+
+Orbio tools feed the AI
+
+News, X posts and on-chain data reach the AI through Orbio's tools, on your own balance.
+
+Research runs on Orbio compute
+
+Long backtests and AI research run on your own Orbio machine, not a shared server.
+
+FAQ
+Quick answers
+Is it live?
++
+What does it cost?
++
+Who holds the keys?
++
+Can it lose money?
++
+Your first agent starts with one sentence.
+
+Build and test. No code needed.
+
+OPEN THE APP →
+SHARPE
+
+Not investment advice. Perps are risky, and past or tested results don't predict future ones.
+
+launch app
+discover
+my agents
+my money
+docs
+economics
+treasury
+for ai agents

@@ -204,11 +204,14 @@ export function Sparkline({
   width = 96,
   height = 28,
   color: colorProp,
+  fluid = false,
 }: {
   data: number[];
   width?: number;
   height?: number;
   color?: string;
+  /** stretch to the parent's width (viewBox keeps the shape) */
+  fluid?: boolean;
 }) {
   // Defensive: records from older sessions or partial DB snapshots may carry no
   // spark series at all. A chart that cannot draw must degrade to empty space,
@@ -224,7 +227,14 @@ export function Sparkline({
   const color = colorProp ?? (points[points.length - 1] >= points[0] ? "#137A4B" : "#B42318");
   const d = `M${pts.join(" L")}`;
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{ overflow: "visible" }}>
+    <svg
+      width={fluid ? "100%" : width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio={fluid ? "none" : undefined}
+      aria-hidden="true"
+      style={{ overflow: "visible", display: "block" }}
+    >
       <path d={d} fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );

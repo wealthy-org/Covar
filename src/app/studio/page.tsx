@@ -39,13 +39,13 @@ function StudioInner() {
   if (isNew) return <Builder />;
 
   return (
-    <div className="container section-tight stack gap-24">
+    <div className="wrap-md page-pad stack gap-24">
       {node}
       <div className="row between wrap gap-16">
         <div className="stack gap-8" style={{ maxWidth: 620 }}>
-          <span className="eyebrow">Studio</span>
-          <h1 className="h2">Your agents</h1>
-          <p className="body">
+          <span className="label-dot">Studio</span>
+          <h1 className="page-title">Your agents</h1>
+          <p className="page-sub">
             Build, version and operate agents. Drafts and published versions are separate objects: editing a draft never
             silently changes what investors are funding.
           </p>
@@ -88,7 +88,7 @@ function StudioInner() {
             <span className="small strong">Drafts</span>
             <span className="tiny">not investable</span>
           </div>
-          <table className="table">
+          <table className="table table-min">
             <thead>
               <tr>
                 <th>Name</th>
@@ -138,7 +138,7 @@ function StudioInner() {
           />
         ) : (
           <div className="table-wrap">
-            <table className="table">
+            <table className="table table-min">
               <thead>
                 <tr>
                   <th>Agent</th>
@@ -255,7 +255,7 @@ export default function StudioPage() {
         "You only pay for AI when you use it",
       ]}
     >
-      <Suspense fallback={<div className="container section-tight"><div className="skel" style={{ height: 240 }} /></div>}>
+      <Suspense fallback={<div className="wrap-md page-pad"><div className="skel" style={{ height: 240 }} /></div>}>
         <StudioInner />
       </Suspense>
     </WalletGate>
