@@ -39,6 +39,10 @@ export function Nav() {
   useEffect(() => setMoreOpen(false), [pathname]);
 
   const chain = CHAINS[EXPECTED_CHAIN_ID];
+  // Landing uses the reference's marketing nav: three links + More, one LAUNCH APP button.
+  const landing = pathname === "/";
+  const links = landing ? LINKS.slice(0, 3) : LINKS;
+  const more = landing ? [...LINKS.slice(3), ...MORE] : MORE;
   const addr = VAULT_ADDRESS;
 
   async function copy() {
@@ -83,7 +87,7 @@ export function Nav() {
         </div>
       </div>
 
-      <header className="nav">
+      <header className={landing ? "nav nav-landing" : "nav"}>
         <div className="container nav-inner">
           <Link href="/" className="brand" aria-label="Covar home">
             <Image src="/logo.png" alt="" width={20} height={22} className="brand-logo" priority />
@@ -91,7 +95,7 @@ export function Nav() {
           </Link>
 
           <nav className="nav-links" aria-label="Primary">
-            {LINKS.map((l) => (
+            {links.map((l) => (
               <Link key={l.href} href={l.href} className="nav-link" data-active={pathname === l.href || (pathname?.startsWith(l.href + "/") ?? false)}>
                 {l.label}
               </Link>
@@ -112,7 +116,7 @@ export function Nav() {
                   className="panel"
                   style={{ position: "absolute", top: 32, left: 0, padding: 6, minWidth: 190, boxShadow: "var(--shadow-md)", zIndex: 50 }}
                 >
-                  {MORE.map((m) => (
+                  {more.map((m) => (
                     <Link
                       key={m.href}
                       href={m.href}
@@ -131,6 +135,12 @@ export function Nav() {
 
           <span className="spacer" />
 
+          {landing ? (
+            <Link href="/explore" className="btn btn-primary nav-launch">
+              Launch app
+            </Link>
+          ) : (
+            <>
           <Link
             href="/notifications"
             className="btn btn-secondary"
@@ -204,6 +214,9 @@ export function Nav() {
             }}>
               Connect wallet
             </button>
+          )}
+
+            </>
           )}
 
           <button

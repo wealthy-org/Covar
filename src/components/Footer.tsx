@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export function Footer() {
@@ -6,7 +7,7 @@ export function Footer() {
       <div className="container footer-inner">
         <div className="stack gap-12">
           <div className="brand" style={{ marginBottom: 10 }}>
-            <span className="brand-mark">C</span>
+            <Image src="/logo.png" alt="" width={20} height={22} className="brand-logo" />
             <span>Covar</span>
           </div>
           <p className="small" style={{ maxWidth: 280 }}>
