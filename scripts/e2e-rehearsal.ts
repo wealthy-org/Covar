@@ -16,7 +16,7 @@
  *      investor's wallet, each step indexed from chain events.
  *
  * Usage (local EVM on :8545 must be running):
- *   TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/e2e-rehearsal.ts --network localhost
+ *   pnpm rehearse:e2e   (= node scripts/hardhat.mjs run scripts/e2e-rehearsal.ts --network localhost)
  *
  * Services (execution/exchange/risk/signer/indexer) are spawned on isolated
  * rehearsal ports with their own state dir, so this never touches the dev ring.

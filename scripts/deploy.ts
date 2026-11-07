@@ -1,7 +1,7 @@
 /**
  * Covar vault deployment.
  *
- *   TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/deploy.ts --network robinhoodTestnet
+ *   pnpm deploy:testnet   (= node scripts/hardhat.mjs run scripts/deploy.ts --network robinhoodTestnet)
  *
  * Order (brief §4): testnet first, full suite green, end-to-end deposit → trade →
  * withdraw proven, and only then mainnet starting with a small controlled value.
@@ -101,9 +101,10 @@ async function main() {
   console.log(`  tx         ${manifest.txHash}`);
   console.log(`  manifest   ${file}\n`);
   console.log("Next:");
-  console.log(`  1. set NEXT_PUBLIC_COVAR_VAULT_ADDRESS=${address} and NEXT_PUBLIC_RH_CHAIN_ID=${chainId}`);
+  console.log(`  1. set NEXT_PUBLIC_COVAR_VAULT_ADDRESS=${address} and NEXT_PUBLIC_CHAIN_ENV=${chainId === 4663 ? "mainnet" : "testnet"}`);
   console.log("  2. report the first NAV from the operator wallet, then test a 10 USDG deposit");
-  console.log("  3. verify the source on the explorer before advertising the address\n");
+  console.log("  3. verify the source on the explorer before advertising the address");
+  console.log("  4. remove DEPLOYER_KEY (and CONFIRM_MAINNET) from .env — see docs/GO_LIVE_RUNBOOK.md\n");
 }
 
 main().catch((e) => {

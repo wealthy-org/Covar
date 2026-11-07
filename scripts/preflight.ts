@@ -5,7 +5,7 @@
  * it catches the failures that actually cost money: wrong chain, wrong token
  * address, wrong decimals, an unfunded key, or a stale public RPC.
  *
- *   TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat run scripts/preflight.ts --network robinhoodTestnet
+ *   pnpm preflight:testnet   (= node scripts/hardhat.mjs run scripts/preflight.ts --network robinhoodTestnet)
  */
 import { ethers } from "ethers";
 
@@ -73,49 +73,75 @@ async function main() {
     ["USDG", cfg.usdg, 6],
     ["WETH", cfg.weth, 18],
   ] as const) {
+    // WETH is informational: the vault deployment only needs USDG.
+    const fatal = label === "USDG";
     if (!address) {
       record(
         `${label} address`,
-        false,
-        networkName === "robinhoodTestnet"
-          ? `${label}_ADDRESS not set — the brief's table is mainnet-only on this chain; confirm the canonical testnet token first`
-          : `${label}_ADDRESS not set`
+        !fatal,
+        !fatal
+          ? `${label}_ADDRESS not set — informational only, the vault deployment does not use ${label}`
+          : networkName === "robinhoodTestnet"
+            ? `${label}_ADDRESS not set — the brief's table is mainnet-only on this chain; confirm the canonical testnet token first`
+            : `${label}_ADDRESS not set`,
+        fatal
       );
+      continue;
+    }
+    if (!ethers.isAddress(address)) {
+      record(`${label} address`, false, `"${address}" is not a valid address`, fatal);
       continue;
     }
     const code = await provider.getCode(address).catch(() => "0x");
     if (code === "0x") {
-      record(`${label} contract`, false, `no bytecode at ${address} on this chain`);
+      record(`${label} contract`, false, `no bytecode at ${address} on this chain`, fatal);
       continue;
     }
     const token = new ethers.Contract(address, ERC20_ABI, provider);
     const [decimals, symbol] = await Promise.all([token.decimals(), token.symbol().catch(() => label)]);
     record(`${label} contract`, true, `${address} · ${symbol} · ${decimals} decimals`);
-    record(`${label} decimals`, Number(decimals) === expected, `${decimals} (expected ${expected})`);
+    record(`${label} decimals`, Number(decimals) === expected, `${decimals} (expected ${expected})`, fatal);
   }
 
   // 3 — deployer key & funding
   const key = process.env.DEPLOYER_KEY;
+  let deployer = "";
   if (!key) {
     record("deployer key", false, "DEPLOYER_KEY not set — nothing can be signed (never commit this value)");
+  } else if (!/^0x[0-9a-fA-F]{64}$/.test(key)) {
+    record("deployer key", false, "DEPLOYER_KEY is not a 64-hex-character private key (check for spaces, quotes or a seed phrase)");
   } else {
     const wallet = new ethers.Wallet(key);
-    const balance = await provider.getBalance(wallet.address);
+    deployer = wallet.address;
     record("deployer key", true, `${wallet.address} (same wallet is used on testnet and mainnet)`);
-    record(
-      "deployer funded",
-      balance > 0n,
-      `${ethers.formatEther(balance)} ETH${balance === 0n ? " — claim testnet ETH from the Robinhood Chain or Chainlink faucet" : ""}`
-    );
+    try {
+      const balance = await provider.getBalance(wallet.address);
+      record(
+        "deployer funded",
+        balance > 0n,
+        `${ethers.formatEther(balance)} ETH${balance === 0n ? " — claim testnet ETH from the Robinhood Chain faucet" : ""}`
+      );
+    } catch (e) {
+      record("deployer funded", false, `balance check failed: ${(e as Error).message.slice(0, 100)}`);
+    }
   }
 
   // 4 — authority configuration
   const operator = process.env.OPERATOR_ADDRESS;
   const feeRecipient = process.env.FEE_RECIPIENT_ADDRESS;
-  record("operator address", !!operator, operator ?? "OPERATOR_ADDRESS not set (isolated trading authority)");
-  record("fee recipient address", !!feeRecipient, feeRecipient ?? "FEE_RECIPIENT_ADDRESS not set");
+  for (const [check, value, envKey] of [
+    ["operator address", operator, "OPERATOR_ADDRESS"],
+    ["fee recipient address", feeRecipient, "FEE_RECIPIENT_ADDRESS"],
+  ] as const) {
+    if (!value) record(check, false, `${envKey} not set`);
+    else if (!ethers.isAddress(value)) record(check, false, `"${value}" is not a valid address`);
+    else record(check, true, ethers.getAddress(value));
+  }
   if (operator && feeRecipient && operator.toLowerCase() === feeRecipient.toLowerCase()) {
     record("authority separation", false, "operator and fee recipient must not be the same wallet");
+  }
+  if (deployer && operator && deployer.toLowerCase() === operator.toLowerCase()) {
+    record("admin/operator separation", false, "operator should be a different wallet from the admin/deployer", false);
   }
 
   const fatalFails = results.filter((r) => !r.ok && r.fatal);
