@@ -1,0 +1,20 @@
+{
+  "chainId": 46630,
+  "network": "robinhood-testnet",
+  "contract": "CovarVault",
+  "address": "0xe3B2eDD026e2cb2736743C8c4Db021E15298bc2d",
+  "txHash": "0xe1bd54482211acbaa28b38859a7c0d5e12bd1f93ea75dc53edd420fc53762fdc",
+  "blockNumber": 149841837,
+  "deployer": "0x1FBaDaFb2056Af662aa11732e86B28aF550af0d9",
+  "constructorArgs": {
+    "asset": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+    "feeRecipient": "0x8b43ac0F705D18d2C42D12Eb2FABe3e45e1045b1",
+    "operator": "0x3d2faC269954487a63f51bF059701fbD9647e3Bf"
+  },
+  "sharesDecimals": 6,
+  "assetSymbol": "USDG",
+  "assetDecimals": 6,
+  "compiler": "0.8.24",
+  "deployedAt": "2026-11-07T04:50:11.790Z",
+  "notes": "Testnet rehearsal. No real value. Run the acceptance suite and the full deposit → trade → withdraw path before mainnet."
+}
