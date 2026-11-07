@@ -120,6 +120,7 @@ export function LineChart({
               d={areaPath(s.data, baseline ?? min)}
               fill={s.color}
               opacity={s.fillOpacity ?? 0.1}
+              className="fx-area"
             />
           ) : null
         )}
@@ -132,6 +133,8 @@ export function LineChart({
             stroke={s.color}
             strokeWidth={s.width ?? 2}
             strokeDasharray={s.dash}
+            pathLength={s.dash ? undefined : 1}
+            className={s.dash ? "fx-area" : "fx-draw"}
             strokeLinecap="round"
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
@@ -235,7 +238,7 @@ export function Sparkline({
       aria-hidden="true"
       style={{ overflow: "visible", display: "block" }}
     >
-      <path d={d} fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <path d={d} fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" vectorEffect="non-scaling-stroke" pathLength={1} className="fx-draw" />
     </svg>
   );
 }

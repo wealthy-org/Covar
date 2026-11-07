@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { Nav } from "@/components/Nav";
 import { Footer } from "@/components/Footer";
+import { Reveal } from "@/components/Reveal";
 
 export const metadata: Metadata = {
   title: "Covar — strategy agents with published rules",
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="grow">{children}</main>
           <Footer />
         </div>
+        <Reveal />
       </body>
     </html>
   );

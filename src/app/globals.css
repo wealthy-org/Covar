@@ -995,3 +995,64 @@ p { margin: 0; }
 .token-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .token-stack { display: inline-flex; align-items: center; flex: 0 0 auto; }
 .token-stack > span { position: relative; display: inline-flex; border-radius: 50%; }
+
+/* ======================================================================
+   Motion — entrance reveal (components/Reveal.tsx) + micro-interactions
+   ====================================================================== */
+:root { --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1); }
+html.rv [data-rv="wait"] { opacity: 0; transform: translateY(16px); }
+html.rv tr[data-rv="wait"], html.rv .lp-chip[data-rv="wait"], html.rv .decision-row[data-rv="wait"] { transform: translateY(8px); }
+html.rv [data-rv="in"] {
+  opacity: 1; transform: none;
+  transition: opacity 620ms var(--ease-out) var(--rv-d, 0ms), transform 620ms var(--ease-out) var(--rv-d, 0ms);
+}
+
+@keyframes fx-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fx-pop { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes fx-rise { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes fx-drawer { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes fx-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+.nav-menu { animation: fx-pop 160ms var(--ease-out); transform-origin: top left; }
+.nav-panel { animation: fx-drawer 220ms var(--ease-out); }
+.nav-panel a, .nav-panel .nav-panel-actions { animation: fx-drawer 280ms var(--ease-out) both; }
+.nav-panel a:nth-child(2) { animation-delay: 20ms; } .nav-panel a:nth-child(3) { animation-delay: 40ms; }
+.nav-panel a:nth-child(4) { animation-delay: 60ms; } .nav-panel a:nth-child(5) { animation-delay: 80ms; }
+.nav-panel a:nth-child(6) { animation-delay: 100ms; } .nav-panel a:nth-child(n + 7) { animation-delay: 120ms; }
+.modal-backdrop { animation: fx-fade 180ms ease-out; }
+.modal { animation: fx-rise 240ms var(--ease-out); }
+.toast, [role="status"].toast { animation: fx-rise 240ms var(--ease-out); }
+
+/* tab switches: the panel below the tabs fades in */
+.utab[data-active="true"] { transition: color 160ms ease, border-color 200ms ease; }
+.fx-in { animation: fx-rise 320ms var(--ease-out); }
+
+/* bars draw in */
+.split-bar > span { transform-origin: left; animation: fx-grow 900ms var(--ease-out) both; }
+.split-bar > span:nth-child(2) { animation-delay: 120ms; } .split-bar > span:nth-child(3) { animation-delay: 240ms; }
+
+/* tactile buttons + gentle lift on interactive cards */
+.btn-ink, .btn-out, .nav-btn, .btn, .announce-btn, .chip, .utab, .seg button { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 120ms ease, box-shadow 160ms ease; }
+.btn-ink:active:not(:disabled), .btn-out:active:not(:disabled), .nav-btn:active, .btn:active:not(:disabled), .chip:active { transform: translateY(1px); }
+.arena-card, .creator-link { transition: border-color 160ms ease, box-shadow 200ms ease, transform 200ms var(--ease-out); }
+.arena-card:hover, .creator-link:hover { transform: translateY(-2px); }
+.table-rows tbody tr { transition: background-color 140ms ease; }
+.accent-link { transition: color 140ms ease, gap 180ms var(--ease-out); }
+.accent-link:hover { gap: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  html.rv [data-rv] { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .nav-menu, .nav-panel, .nav-panel a, .nav-panel .nav-panel-actions, .modal, .modal-backdrop, .fx-in, .split-bar > span, .toast { animation: none !important; }
+  .arena-card:hover, .creator-link:hover { transform: none; }
+}
+@media print { html.rv [data-rv] { opacity: 1 !important; transform: none !important; } }
+
+/* charts draw themselves once their card is revealed */
+@keyframes fx-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.fx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; animation: fx-draw 1300ms var(--ease-out) 120ms both; }
+@keyframes fx-appear { from { opacity: 0; } }
+.fx-area { animation: fx-appear 900ms ease-out 500ms backwards; }
+html.rv [data-rv="wait"] .fx-draw, html.rv [data-rv="wait"] .fx-area { animation: none; }
+html.rv [data-rv="wait"] .fx-draw { stroke-dashoffset: 1; }
+html.rv [data-rv="wait"] .fx-area { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .fx-draw, .fx-area { animation: none !important; stroke-dashoffset: 0 !important; } }

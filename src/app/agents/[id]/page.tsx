@@ -509,7 +509,7 @@ export default function AgentPage() {
               </button>
             </div>
             {recordTab === "decisions" ? (
-              <div style={{ overflowX: "auto" }}>
+              <div key="decisions" className="fx-in" style={{ overflowX: "auto" }}>
                 <table className="table">
                   <thead>
                     <tr>
@@ -551,7 +551,7 @@ export default function AgentPage() {
                 </table>
               </div>
             ) : (
-              <div className="rcard-pad stack gap-10">
+              <div key="changes" className="rcard-pad stack gap-10 fx-in">
                 {[...agent.versions].reverse().map((v) => (
                   <div key={v.version} className="kv" style={{ alignItems: "flex-start" }}>
                     <div className="stack" style={{ gap: 3 }}>

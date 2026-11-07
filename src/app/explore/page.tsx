@@ -159,6 +159,7 @@ export default function ExplorePage() {
         </label>
       </div>
 
+      <div key={tab} className="fx-in">
       {tab === "vaults" ? (
         <>
           <div className="table-wrap">
@@ -259,6 +260,7 @@ export default function ExplorePage() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
