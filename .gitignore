@@ -22,3 +22,5 @@ prisma/dev.db*
 
 # TS incremental build cache (regenerated)
 tsconfig.tsbuildinfo
+
+contracts
