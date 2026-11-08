@@ -38,7 +38,15 @@ export interface SignerPort {
     | Promise<{ ok: true; signature: string } | { ok: false; error: string }>;
 }
 export interface VenuePort {
-  submit(input: { clientOrderId: string; market: string; side: "buy" | "sell"; qty: number; price: number }): VenueOrder | Promise<VenueOrder>;
+  submit(input: {
+    clientOrderId: string;
+    market: string;
+    side: "buy" | "sell";
+    qty: number;
+    price: number;
+    /** Exits only. Live venues enforce it; the paper venue ignores it. */
+    reduceOnly?: boolean;
+  }): VenueOrder | Promise<VenueOrder>;
   get(clientOrderId: string): VenueOrder | undefined | Promise<VenueOrder | undefined>;
   advance(): void | Promise<void>;
 }
@@ -257,6 +265,7 @@ export function createExecution(opts: {
       side: order.side,
       qty: order.qty,
       price: order.price,
+      reduceOnly: order.reduceOnly,
     });
 
     // 4 — the crash window: venue accepted, our ack was never written
@@ -274,6 +283,11 @@ export function createExecution(opts: {
 
   async function applyVenueFills(order: OrderRecord) {
     const venueOrder = await exchange.get(order.clientOrderId);
+    if (venueOrder?.status === "rejected") {
+      // terminal at the venue with nothing filled (e.g. IOC not marketable, margin check)
+      setStatus(order, "failed", { lastError: `venue rejected ${venueOrder.orderId}` });
+      return;
+    }
     if (!venueOrder || venueOrder.status !== "filled") return;
     for (const fill of venueOrder.fills) {
       if (order.appliedFillIds.includes(fill.fillId)) continue; // idempotent fill processing

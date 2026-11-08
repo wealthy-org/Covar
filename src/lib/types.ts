@@ -207,6 +207,8 @@ export interface CovarState {
   walletGuarantee?: string;
   /** In-app inbox. Written only by explicit user actions and by observed system events. */
   notifications: AppNotification[];
+  /** Signed-in (SIWE) wallet that owns this state, lower-case. Undefined = anonymous device state. */
+  owner?: string;
   /** Set by the session-sync route when the snapshot was durably stored. Local-only state has none. */
   savedAt?: string;
   agents: Agent[];

@@ -9,10 +9,13 @@ import { PROVENANCE_LABEL } from "@/lib/types";
 import type { Agent, Decision } from "@/lib/types";
 import { cx, dateOnly, dateTime, pct, pctSigned, timeAgo, usd } from "@/lib/format";
 import { VAULT_ADDRESS } from "@/lib/chain";
+import { VAULT_AGENT_ID, chainLabel } from "@/lib/vaultAgent";
+import VaultActivity, { useVaultFeed } from "@/components/VaultActivity";
 import { useMounted } from "@/lib/useMounted";
 import { LineChart } from "@/components/Chart";
 import { Empty, Field, Modal, TokenLogo, TokenStack, useToast } from "@/components/ui";
 import { OnChainVaultCard } from "@/components/ChainPanel";
+import { InvestPanel } from "@/components/InvestPanel";
 
 /**
  * Reference layout (sharpe.ac vault page): back link, header with pills, then a
@@ -66,6 +69,7 @@ function KV({ k, v, tone }: { k: string; v: React.ReactNode; tone?: string }) {
 export default function AgentPage() {
   const params = useParams<{ id: string }>();
   const { agents, creators, portfolio, practice, liveStrategy, walletConnected } = useCovar();
+  const vaultFeedState = useVaultFeed();
   const { toast, node } = useToast();
   const mounted = useMounted();
   const agent = agents.find((a) => a.id === params.id);
@@ -97,6 +101,25 @@ export default function AgentPage() {
   }, [agent, mounted]);
 
   if (!agent) {
+    if (params.id === VAULT_AGENT_ID && vaultFeedState.status !== "off") {
+      return (
+        <div className="wrap-md page-pad">
+          <Empty
+            title={vaultFeedState.status === "loading" ? "Reading the vault from chain…" : "On-chain vault unavailable"}
+            body={
+              vaultFeedState.status === "loading"
+                ? "This record is built from the deployed vault's chain logs."
+                : `The indexer did not answer (${vaultFeedState.error ?? "unknown"}). No figures are shown until it does.`
+            }
+            action={
+              <Link className="btn btn-primary" href="/explore">
+                Back to Discover
+              </Link>
+            }
+          />
+        </div>
+      );
+    }
     return (
       <div className="wrap-md page-pad">
         <Empty
@@ -126,6 +149,7 @@ export default function AgentPage() {
   const requested = holding?.requestedWithdrawal;
   const up = agent.returnPct >= 0;
   const onChain = !!vault && !!VAULT_ADDRESS && vault.address.toLowerCase() === VAULT_ADDRESS.toLowerCase();
+  const isVaultAgent = agent.id === VAULT_AGENT_ID;
 
   const doDeposit = () => {
     const res = actions.deposit(agent.id, deposit);
@@ -173,7 +197,7 @@ export default function AgentPage() {
           </div>
         )}
 
-        {isInvestable && !walletConnected && (
+        {isInvestable && !onChain && !walletConnected && (
           <>
             <div className="rcard-sep" />
             <span className="small">Browse freely. Connect when you want to deposit.</span>
@@ -188,7 +212,7 @@ export default function AgentPage() {
           </>
         )}
 
-        {isInvestable && walletConnected && (
+        {isInvestable && !onChain && walletConnected && (
           <>
             <div className="rcard-sep" />
             {holding ? (
@@ -275,6 +299,8 @@ export default function AgentPage() {
         )}
       </div>
 
+      {onChain && <InvestPanel agentId={agent.id} />}
+
       {run && (
         <div className="rcard rcard-pad stack gap-8">
           <div className="row between">
@@ -337,7 +363,7 @@ export default function AgentPage() {
               ) : (
                 "you"
               )}{" "}
-              · {agent.liveAgeDays ? `${agent.liveAgeDays} days live` : "not live"} · v{agent.version}
+              · {agent.liveAgeDays ? `${agent.liveAgeDays} day${agent.liveAgeDays === 1 ? "" : "s"} live` : "not live"} · v{agent.version}
             </span>
             <div className="row gap-6 wrap">
               {agent.status === "live" && vault && <span className="pill pill-green">● Vault open</span>}
@@ -381,9 +407,11 @@ export default function AgentPage() {
                   <span className="row gap-6">
                     <i className="legend-swatch" style={{ background: "#3B5BDB" }} /> Agent
                   </span>
-                  <span className="row gap-6">
-                    <i className="legend-swatch legend-dash" style={{ borderColor: "#9AA3B5" }} /> Buy &amp; hold
-                  </span>
+                  {(agent.benchmark?.length ?? 0) > 0 && (
+                    <span className="row gap-6">
+                      <i className="legend-swatch legend-dash" style={{ borderColor: "#9AA3B5" }} /> Buy &amp; hold
+                    </span>
+                  )}
                   {(agent.twin?.length ?? 0) > 0 && (
                     <span className="row gap-6">
                       <i className="legend-swatch legend-dash" style={{ borderColor: "#6B7280" }} /> Rules-only twin
@@ -394,11 +422,19 @@ export default function AgentPage() {
               {(agent.curve?.length ?? 0) < 3 ? (
                 <div className="stack center gap-8" style={{ padding: "56px 16px", textAlign: "center" }}>
                   <span className="pill">No record yet</span>
-                  <span className="small">This agent has no performance record yet.</span>
-                  <span className="tiny" style={{ maxWidth: 420 }}>
-                    Start a practice session in Studio to begin recording. The chart stays empty until there is data — no
-                    placeholder curve is drawn.
-                  </span>
+                  {isVaultAgent ? (
+                    <span className="small" style={{ maxWidth: 420 }}>
+                      The share-price chart starts once the operator has reported NAV on-chain a few times. No placeholder curve is drawn.
+                    </span>
+                  ) : (
+                    <>
+                      <span className="small">This agent has no performance record yet.</span>
+                      <span className="tiny" style={{ maxWidth: 420 }}>
+                        Start a practice session in Studio to begin recording. The chart stays empty until there is data — no
+                        placeholder curve is drawn.
+                      </span>
+                    </>
+                  )}
                 </div>
               ) : (
                 <LineChart
@@ -419,21 +455,39 @@ export default function AgentPage() {
                 <span className="stat-label">Worst drop</span>
                 <span className="mono-num neg">{pct(agent.drawdownPct)}</span>
               </div>
-              <div>
-                <span className="stat-label">Trades</span>
-                <span className="mono-num">{agent.tradeCount}</span>
-              </div>
+              {isVaultAgent ? (
+                <div>
+                  <span className="stat-label">NAV reports</span>
+                  <span className="mono-num">{vaultFeedState.summary?.counts.navReports ?? "—"}</span>
+                </div>
+              ) : (
+                <div>
+                  <span className="stat-label">Trades</span>
+                  <span className="mono-num">{agent.tradeCount}</span>
+                </div>
+              )}
               <div>
                 <span className="stat-label">Days on record</span>
                 <span className="mono-num">{agent.liveAgeDays || agent.curve.length || "—"}</span>
               </div>
-              <div>
-                <span className="stat-label">Covar score</span>
-                <span className="mono-num">{agent.score ? agent.score.toFixed(2) : "not ranked"}</span>
-              </div>
+              {isVaultAgent ? (
+                <div>
+                  <span className="stat-label">Investors</span>
+                  <span className="mono-num">{vaultFeedState.summary ? `${vaultFeedState.summary.investors.holding} holding` : "—"}</span>
+                </div>
+              ) : (
+                <div>
+                  <span className="stat-label">Covar score</span>
+                  <span className="mono-num">{agent.score ? agent.score.toFixed(2) : "not ranked"}</span>
+                </div>
+              )}
             </div>
           </section>
 
+          {isVaultAgent && <VaultActivity />}
+
+          {!isVaultAgent && (
+          <>
           {/* 2 · what it is doing | recent decisions */}
           <div className="detail-two">
             <section className="rcard rcard-pad stack gap-14">
@@ -576,6 +630,9 @@ export default function AgentPage() {
             </div>
           </section>
 
+          </>
+          )}
+
           {/* 4 · about */}
           <section className="rcard rcard-pad stack gap-10">
             <h2 className="rcard-title">About</h2>
@@ -587,6 +644,8 @@ export default function AgentPage() {
             </p>
           </section>
 
+          {!isVaultAgent && (
+          <>
           {/* 5 · how it trades | risk limits */}
           {rules && (
             <div className="detail-two">
@@ -687,6 +746,9 @@ export default function AgentPage() {
             </section>
           </div>
 
+          </>
+          )}
+
           {/* 7 · where your money goes */}
           <section className="rcard rcard-pad stack gap-16">
             <h2 className="rcard-title">Where your money goes</h2>
@@ -709,10 +771,16 @@ export default function AgentPage() {
             </div>
             <div>
               <KV k="Vault contract" v={vault ? (onChain ? vault.address : "demo record · not deployed") : "no vault"} />
-              <KV k="Network" v="Robinhood Chain testnet · 46630" />
+              <KV k="Network" v={isVaultAgent && vaultFeedState.summary ? `${chainLabel(vaultFeedState.summary.chainId)} · ${vaultFeedState.summary.chainId}` : "Robinhood Chain testnet · 46630"} />
               <KV k="Deposit fee" v={`${vault?.depositFeePct ?? PLATFORM_LIMITS.depositFeePct}% + ${(vault?.depositFeeFlat ?? PLATFORM_LIMITS.depositFeeFlat).toFixed(2)} USDG`} />
-              <KV k="Creator fee" v={`${rules?.feeChoicePct ?? 10}% of winning-trade profit · 80/20 creator/platform`} />
-              <KV k="Losing trades netted?" v="No" />
+              {isVaultAgent ? (
+                <KV k="Withdrawal fee" v="1% + 0.10 USDG, taken at settlement · no performance fee" />
+              ) : (
+                <>
+                  <KV k="Creator fee" v={`${rules?.feeChoicePct ?? 10}% of winning-trade profit · 80/20 creator/platform`} />
+                  <KV k="Losing trades netted?" v="No" />
+                </>
+              )}
               <KV k="Withdrawal flow" v="request → close positions → settle → claim" />
               <KV k="Min deposit" v="10 USDG" />
             </div>

@@ -6,7 +6,10 @@ import { actions, useCovar } from "@/lib/store";
 import { cx, dateTime, shortAddr, usd } from "@/lib/format";
 import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
 import { OnChainVaultCard } from "@/components/ChainPanel";
+import { InvestPanel } from "@/components/InvestPanel";
 import { WalletGate } from "@/components/WalletGate";
+import CreditsPanel from "@/components/CreditsPanel";
+import { useCredits } from "@/lib/creditsClient";
 
 export default function PortfolioPage() {
   return (
@@ -27,6 +30,7 @@ export default function PortfolioPage() {
 function PortfolioInner() {
   const { agents, portfolio } = useCovar();
   const { toast, node } = useToast();
+  const credits = useCredits();
   const [tab, setTab] = useState<"all" | "flows" | "fees" | "pending">("all");
 
   const rows = portfolio.holdings.map((h) => {
@@ -87,17 +91,10 @@ function PortfolioInner() {
         </div>
         <div className="card card-pad">
           <span className="tiny">Copilot credits</span>
-          <div className="stat-value">{usd(portfolio.creditUsd)}</div>
-          <button
-            className="btn btn-soft btn-sm"
-            style={{ marginTop: 6 }}
-            onClick={() => {
-              actions.addCredits(10);
-              toast("Topped up $10.00 of Copilot credits");
-            }}
-          >
-            Top up $10
-          </button>
+          <div className="stat-value">{credits.balanceUsd === null ? "—" : usd(credits.balanceUsd)}</div>
+          <a className="btn btn-soft btn-sm" style={{ marginTop: 6 }} href="#credits">
+            {credits.signedIn ? "Top up" : "Sign in to use"}
+          </a>
         </div>
       </div>
 
@@ -286,6 +283,10 @@ function PortfolioInner() {
           </div>
         </div>
         <div className="stack gap-12">
+          <InvestPanel />
+          <div id="credits">
+            <CreditsPanel />
+          </div>
           <OnChainVaultCard />
           <div className="card card-pad stack gap-8">
             <span className="small strong">Custody &amp; authority</span>

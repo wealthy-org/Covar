@@ -16,6 +16,11 @@ pragma solidity ^0.8.24;
  *    redirect a withdrawal to an address other than the requesting investor.
  *  - Shares can only be minted or redeemed against a NAV that is inside the
  *    freshness window and inside the per-report deviation cap.
+ *  - v2: the contract enforces the launch limits (TVL cap and per-deposit cap),
+ *    trading capital can only leave to ONE owner-set trading account (the venue
+ *    deposit address), and USDG owed to settled-but-unclaimed withdrawals is
+ *    reserved: it can neither be allocated to the venue nor used to settle
+ *    someone else's withdrawal.
  *
  * NOT audited. Do not deploy with real value before the full suite passes on
  * testnet and the accounting is reconciled against actual exchange balances.
@@ -66,6 +71,16 @@ contract CovarVault {
     uint256 public depositFeeFlat = 100_000;
     /// @notice Minimum deposit to keep dust and griefing out.
     uint256 public minDeposit = 10_000_000; // 10 USDG
+    /// @notice Launch limits (brief §4 "small controlled value"), enforced on-chain.
+    uint256 public maxTotalAssets = 1_000_000_000; // 1,000 USDG of reported assets
+    uint256 public maxDepositPerTx = 100_000_000; // 100 USDG per deposit (gross)
+
+    /// @notice The only address trading capital may be sent to (venue deposit address).
+    address public tradingAccount;
+    /// @notice Cumulative USDG sent to the trading account (bookkeeping for reconciliation).
+    uint256 public totalAllocated;
+    /// @notice USDG owed to settled, unclaimed withdrawals. Never allocatable, never re-used.
+    uint256 public reservedForClaims;
 
     struct WithdrawalRequest {
         address investor;
@@ -97,6 +112,9 @@ contract CovarVault {
     event OwnerChanged(address indexed previous, address indexed next);
     event OperatorChanged(address indexed previous, address indexed next);
     event Paused(bool depositsPaused, bool closeOnly);
+    event LimitsChanged(uint256 maxTotalAssets, uint256 maxDepositPerTx);
+    event TradingAccountChanged(address indexed previous, address indexed next);
+    event AllocatedToVenue(address indexed to, uint256 amount);
 
     // -------------------------------------------------------------------- errors
     error NotOwner();
@@ -111,6 +129,10 @@ contract CovarVault {
     error NoRequest();
     error WrongState();
     error TransferFailed();
+    error CapExceeded();
+    error DepositTooLarge();
+    error InsufficientLiquidity();
+    error NoTradingAccount();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -164,11 +186,13 @@ contract CovarVault {
         if (closeOnly) revert CloseOnly_();
         if (assets == 0) revert ZeroAmount();
         if (assets < minDeposit) revert BelowMinimum();
+        if (assets > maxDepositPerTx) revert DepositTooLarge();
         _requireFreshNav();
 
         uint256 fee = (assets * depositFeeBps) / 10_000 + depositFeeFlat;
         if (fee >= assets) revert ZeroAmount();
         uint256 net = assets - fee;
+        if (reportedAssets + net > maxTotalAssets) revert CapExceeded();
 
         if (!asset.transferFrom(msg.sender, address(this), assets)) revert TransferFailed();
         if (fee > 0 && !asset.transfer(feeRecipient, fee)) revert TransferFailed();
@@ -226,7 +250,8 @@ contract CovarVault {
     function settleWithdrawal(address investor, uint256 netAssets) external onlyOperator {
         WithdrawalRequest storage r = requests[investor];
         if (r.state != State.Settling) revert WrongState();
-        if (netAssets > asset.balanceOf(address(this))) revert TransferFailed();
+        // only USDG that is not already owed to another claimant can fund a settlement
+        if (netAssets > availableLiquidity()) revert InsufficientLiquidity();
 
         uint256 fee = (netAssets * withdrawalFeeBps) / 10_000 + withdrawalFeeFlat;
         if (fee >= netAssets) fee = 0;
@@ -235,7 +260,8 @@ contract CovarVault {
         r.settledAt = uint64(block.timestamp);
         r.state = State.Claimable;
         totalShares -= r.shares;
-        reportedAssets -= netAssets;
+        reportedAssets -= netAssets; // reverts if the operator tries to settle more than reported
+        reservedForClaims += r.settledAssets;
 
         if (fee > 0 && !asset.transfer(feeRecipient, fee)) revert TransferFailed();
         emit WithdrawalSettled(investor, r.settledAssets);
@@ -248,6 +274,7 @@ contract CovarVault {
         uint256 amount = r.settledAssets;
         r.settledAssets = 0;
         r.state = State.Claimed;
+        reservedForClaims -= amount;
         if (amount > 0 && !asset.transfer(msg.sender, amount)) revert TransferFailed();
         emit WithdrawalClaimed(msg.sender, amount);
     }
@@ -268,12 +295,44 @@ contract CovarVault {
         lastNavUpdate = uint64(block.timestamp);
     }
 
+    /**
+     * @notice Move idle USDG to the trading account (the venue deposit address).
+     * The destination is fixed by the owner; the operator chooses only the amount.
+     * Blocked in close-only mode (no new risk) and never touches reserved claims.
+     */
+    function allocateToVenue(uint256 amount) external onlyOperator {
+        if (closeOnly) revert CloseOnly_();
+        if (amount == 0) revert ZeroAmount();
+        address to = tradingAccount;
+        if (to == address(0)) revert NoTradingAccount();
+        if (amount > availableLiquidity()) revert InsufficientLiquidity();
+        totalAllocated += amount;
+        if (!asset.transfer(to, amount)) revert TransferFailed();
+        emit AllocatedToVenue(to, amount);
+    }
+
     // ------------------------------------------------------------------ admin ops
     /// @notice Pause new deposits and/or force close-only. Claims always stay open.
     function pause(bool _depositsPaused, bool _closeOnly) external onlyOwner {
         depositsPaused = _depositsPaused;
         closeOnly = _closeOnly;
         emit Paused(_depositsPaused, _closeOnly);
+    }
+
+    /// @notice Raise or lower the launch limits. Bounded so a typo cannot lock deposits out entirely.
+    function setLimits(uint256 _maxTotalAssets, uint256 _maxDepositPerTx) external onlyOwner {
+        require(_maxDepositPerTx >= minDeposit, "deposit cap < minimum");
+        require(_maxTotalAssets >= _maxDepositPerTx, "tvl cap < deposit cap");
+        maxTotalAssets = _maxTotalAssets;
+        maxDepositPerTx = _maxDepositPerTx;
+        emit LimitsChanged(_maxTotalAssets, _maxDepositPerTx);
+    }
+
+    /// @notice Set the single venue deposit address trading capital may be sent to.
+    function setTradingAccount(address next) external onlyOwner {
+        require(next != address(this), "self");
+        emit TradingAccountChanged(tradingAccount, next);
+        tradingAccount = next;
     }
 
     function setOperator(address next) external onlyOwner {
@@ -307,6 +366,12 @@ contract CovarVault {
     }
 
     // --------------------------------------------------------------------- views
+    /// @notice USDG held by the vault that is not owed to settled withdrawals.
+    function availableLiquidity() public view returns (uint256) {
+        uint256 bal = asset.balanceOf(address(this));
+        return bal > reservedForClaims ? bal - reservedForClaims : 0;
+    }
+
     function requestCount() external view returns (uint256) {
         return requesters.length;
     }

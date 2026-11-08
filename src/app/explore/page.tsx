@@ -9,6 +9,7 @@ import { Sparkline } from "@/components/Chart";
 import { PROVENANCE_LABEL } from "@/lib/types";
 import { cx, pct, pctSigned, usd } from "@/lib/format";
 import type { Agent } from "@/lib/types";
+import { VAULT_AGENT_ID } from "@/lib/vaultAgent";
 
 /**
  * Reference layout (sharpe.ac /discover): title + mono subtitle, underline tabs
@@ -114,7 +115,14 @@ export default function ExplorePage() {
   const [tab, setTab] = useState<Tab>("vaults");
   const [sort, setSort] = useState<SortId>("tvl");
 
-  const vaults = useMemo(() => agents.filter((a) => a.provenance === "live" && !!a.vault).sort(sorter(sort)), [agents, sort]);
+  // the deployed vault (chain data, 3.6) is pinned first; demo records follow in the chosen order
+  const vaults = useMemo(
+    () => [
+      ...agents.filter((a) => a.id === VAULT_AGENT_ID),
+      ...agents.filter((a) => a.id !== VAULT_AGENT_ID && a.provenance === "live" && !!a.vault).sort(sorter(sort)),
+    ],
+    [agents, sort]
+  );
   const arena = useMemo(
     () => agents.filter((a) => a.provenance === "practice" || a.provenance === "testnet").sort(sorter(sort === "tvl" ? "return" : sort)),
     [agents, sort]
@@ -187,6 +195,11 @@ export default function ExplorePage() {
                               {a.name}
                             </Link>
                             <span className="tagbox hide-xs">{a.market}</span>
+                            {a.id === VAULT_AGENT_ID && (
+                              <span className="pill pill-green" data-testid="onchain-vault-tag" title="Every figure in this row is read from the deployed vault's chain logs">
+                                on-chain
+                              </span>
+                            )}
                           </span>
                           <span className="tiny mono">
                             {PROVENANCE_LABEL[a.provenance].toLowerCase()} · {a.status === "live" ? "operating" : a.status.replace("_", " ")}
@@ -195,7 +208,7 @@ export default function ExplorePage() {
                       </div>
                     </td>
                     <td className="mono tiny hide-sm">@{creatorOf(a.creatorId)?.handle ?? "you"}</td>
-                    <td className="right hide-sm">≤20%</td>
+                    <td className="right hide-sm">{a.id === VAULT_AGENT_ID ? "—" : "≤20%"}</td>
                     <td className={cx("right", a.returnPct >= 0 ? "pos" : "neg")}>{pctSigned(a.returnPct)}</td>
                     <td className="right hide-md">{a.score ? a.score.toFixed(2) : "—"}</td>
                     <td className="right">{usd(a.tvlUsd || 0, { compact: true })}</td>

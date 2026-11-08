@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, dbLabel } from "@/lib/db";
+import { sameOrigin, stateOwner } from "@/lib/auth";
 import type { AppNotification, CovarState, LedgerRow, PracticeRun, Strategy } from "@/lib/types";
 
 /**
@@ -10,20 +11,27 @@ import type { AppNotification, CovarState, LedgerRow, PracticeRun, Strategy } fr
  * so they are queryable as real tables. localStorage remains the offline cache.
  * GET — returns the stored snapshot with `savedAt` so a fresh browser can resume.
  *
- * Everything here is still SIMULATED session state (no chain truth). The route
- * says so in every response, and reports `db: "prisma-sqlite" | "unconfigured"`.
+ * Owner: the wallet signed in with SIWE (multi-user), or the shared "local" row in
+ * single-operator dev mode. In production, anonymous visitors get 401 and keep
+ * their state in localStorage only — one shared row for everyone would leak data.
+ *
+ * App state is SIMULATED/practice data unless a ledger row carries a chain tx hash.
  */
 export const dynamic = "force-dynamic";
 
-const SESSION_ID = "local";
+const needAuth = () =>
+  NextResponse.json({ ok: false, auth: "required", error: "Sign in with your wallet to sync across devices." }, { status: 401 });
 
-export async function GET() {
+export async function GET(req: Request) {
   if (!prisma) return NextResponse.json({ ok: false, db: "unconfigured", simulated: true });
+  const SESSION_ID = await stateOwner(req);
+  if (!SESSION_ID) return needAuth();
   const row = await prisma.sessionState.findUnique({ where: { id: SESSION_ID } });
-  if (!row) return NextResponse.json({ ok: true, db: "prisma-sqlite", simulated: true, state: null });
+  if (!row) return NextResponse.json({ ok: true, db: dbLabel(), owner: SESSION_ID, simulated: true, state: null });
   return NextResponse.json({
     ok: true,
-    db: "prisma-sqlite",
+    db: dbLabel(),
+    owner: SESSION_ID,
     simulated: true,
     savedAt: row.savedAt.toISOString(),
     state: JSON.parse(row.stateJson),
@@ -32,6 +40,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   if (!prisma) return NextResponse.json({ ok: false, db: "unconfigured", simulated: true }, { status: 503 });
+  if (!sameOrigin(req)) return NextResponse.json({ ok: false, error: "cross-origin request refused" }, { status: 403 });
+  const SESSION_ID = await stateOwner(req);
+  if (!SESSION_ID) return needAuth();
   let state: CovarState;
   try {
     state = (await req.json()) as CovarState;
@@ -117,7 +128,7 @@ export async function POST(req: Request) {
     }),
   ]);
 
-  return NextResponse.json({ ok: true, db: "prisma-sqlite", simulated: true, savedAt: savedAt.toISOString() });
+  return NextResponse.json({ ok: true, db: dbLabel(), owner: SESSION_ID, simulated: true, savedAt: savedAt.toISOString() });
 }
 
 function statusIsPublished(d: Strategy): boolean {

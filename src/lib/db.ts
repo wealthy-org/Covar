@@ -23,3 +23,4 @@ export const prisma = (globalForPrisma.prisma ??= new PrismaClient({
 
 export const dbConfigured = () => prisma !== null;
 export const dbUrl = () => process.env.DATABASE_URL ?? "file:<project>/prisma/dev.db (dev default)";
+export const dbLabel = () => (DB_URL.startsWith("postgres") ? "prisma-postgres" : "prisma-sqlite");

@@ -66,7 +66,7 @@ Alur yang disarankan, lengkap dari atas ke bawah:
 3. **Builder `/studio?new=1`** — ketik misalnya:
    `Long SOL breakouts on the 1h. Stop 1.5x ATR, only take 2R or better.` → **Send**.
    - Draf rule set muncul; pesan menyebut mesin yang menjawab (*Interpreted by: …*).
-   - Tanpa `ANTHROPIC_API_KEY` tertulis `rules parser`. Dengan key: model mengusulkan
+   - Tanpa `AI_PROVIDER_API_KEY` tertulis `rules parser` (dengan key Orbio: `Orbio · <model>`). Dengan key: model mengusulkan
      interpretasi, mesin deterministik yang meng-encode (model tidak bisa menulis rule
      langsung, apalagi mengeksekusi order).
    - Tab **Rules** (editor visual) dan **Code** bisa diedit; invalid = publish ditolak.

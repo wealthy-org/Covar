@@ -1,6 +1,6 @@
 # Covar — Runbook Go-Live (dari kondisi sekarang → deployment resmi)
 
-**Disusun:** 7 Nov 2026 · **Acuan:** `COVAR_ROBINHOOD_DEV_BRIEF.md` (2 Nov 2026) · repo `wealthy-org/Covar`
+**Disusun:** 7 Nov 2026 · **Diperbarui:** 8 Nov 2026 (paket 3.1–3.7 + 3.10 selesai) · **Acuan:** `COVAR_ROBINHOOD_DEV_BRIEF.md` (2 Nov 2026) · repo `wealthy-org/Covar`
 
 Dokumen ini adalah **urutan kerja lengkap** supaya semua fitur brief aktif dan Covar siap deployment
 resmi. Setiap langkah diberi penanggung jawab:
@@ -9,10 +9,11 @@ resmi. Setiap langkah diberi penanggung jawab:
 - **🛠 DEV**: pekerjaan kode (bisa saya kerjakan setelah Anda memberi input yang disebut)
 - **🤝 BERSAMA**: Anda menjalankan perintah atau memberi akses, dev memverifikasi
 
-> **Jujur dulu:** saat ini web, builder, backtest, practice, risk engine, dan kontrak vault sudah
-> jalan dan teruji **di lokal**. Namun mengisi env saja **tidak** membuat semuanya "100% live".
-> Masih ada 9 paket kode (Fase 3) yang harus dibangun lalu diuji di testnet sebelum mainnet.
-> Brief §14 dan §15 melarang mengklaim platform live hanya karena UI-nya berfungsi.
+> **Jujur dulu:** paket kode 3.1–3.7 dan 3.10 sudah dibangun dan lolos test **lokal** (termasuk E2E
+> browser on-chain di chain lokal). Itu **belum** berarti live: semuanya masih harus diuji di testnet
+> (Fase 5–7) dengan vault v2 yang baru di-deploy ulang. Yang belum dibangun: 3.8 (`rehearse:testnet`)
+> dan 3.9 (token, tetap *pending*). Brief §14 dan §15 melarang mengklaim platform live hanya karena
+> UI-nya berfungsi.
 
 ---
 
@@ -22,7 +23,7 @@ resmi. Setiap langkah diberi penanggung jawab:
 Fase 0  Keputusan owner                    👤      (½–1 hari)
 Fase 1  Buat akun & layanan                👤      (1 hari)
 Fase 2  Siapkan wallet                     👤      (1–2 jam)
-Fase 3  Bangun 9 paket kode yang kurang    🛠      (bertahap, lihat estimasi)
+Fase 3  Paket kode                        🛠      (3.1–3.7, 3.10 ✅ · 3.8 sisa · 3.9 pending)
 Fase 4  Verifikasi lokal penuh             🤝
 Fase 5  Deploy kontrak ke TESTNET 46630    🤝
 Fase 6  Deploy infrastruktur staging       🤝
@@ -47,7 +48,7 @@ Tulis jawabannya. Cukup dikirim ke dev lewat chat, karena isinya bukan rahasia.
 | 0.2 | **Logo final** | Logo sekarang `public/logo.png`, ganti kalau ada versi final | tidak memblok |
 | 0.3 | **Tabel parameter fee** (brief §12) | Default referensi: deposit/withdraw **1% + 0,10 USDG**, fee creator **≤20% profit trade menang**, split **80/20** creator/platform, trade rugi tidak di-net. Konfirmasi: pembulatan, pengecualian dana creator sendiri, dan kapan fee ditagih | Fase 5 |
 | 0.4 | **Batas nilai awal mainnet** | Mis. TVL maks **1.000 USDG per vault** dan **100 USDG per deposit** untuk 2–4 minggu pertama | paket 3.1 |
-| 0.5 | **Venue trading** | Lighter (sesuai brief §8). Pilih **zkLighter** (venue utama Lighter) **atau** deployment Lighter di Robinhood Chain (`api.rh-testnet.lighter.xyz` / `api.rh.lighter.xyz`, sumber pihak ketiga dan **harus dikonfirmasi** ke tim Lighter) | paket 3.4 |
+| 0.5 | **Venue trading** | ✅ Diputuskan: **Lighter di Robinhood Chain** (`api.rh.lighter.xyz`, testnet `api.rh-testnet.lighter.xyz`). Dicek on-chain 8 Nov: Lighter RH **mainnet** berjalan di chain **4663** dengan **USDG yang sama** dengan vault (kontrak `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d`). ⚠️ Lighter RH **testnet tidak berada di 46630** (USDG uji-nya `0xAd355C2d…0033`, beda dengan USDG Paxos testnet), jadi di testnet dana vault **tidak bisa** dikirim ke Lighter. Uji testnet = vault 46630 + akun Lighter RH testnet yang didanai terpisah (lihat Fase 7) | paket 3.4 |
 | 0.6 | **AI credits**: Orbio atau provider LLM langsung | **Rekomendasi: Orbio** (lihat Lampiran B). Kode sudah mendukung keduanya lewat env | paket 3.7 |
 | 0.7 | **Login wallet**: injected EVM (MetaMask/Rabby) atau **Privy** (seperti referensi) | Privy perlu akun dan App ID | paket 3.2 |
 | 0.8 | **Token protokol, staking, buyback/burn** | Bangun sekarang **atau** biarkan berlabel *pending* (brief §15 membolehkan asal dicatat jujur). Saran: pending dulu | paket 3.9 |
@@ -110,22 +111,24 @@ Ini daftar jujur hal yang **belum** ada di repo hari ini. Semuanya bisa saya ker
 **Urutannya penting:** paket yang mengubah kontrak (3.1) harus selesai **sebelum** deploy testnet,
 supaya yang diuji sama persis dengan yang nanti naik ke mainnet.
 
-| # | Paket | Kenapa wajib (brief) | Kondisi sekarang | Input Anda |
-|---|---|---|---|---|
-| 3.1 | **Kontrak: batas TVL & batas deposit** (`maxTotalAssets`, `maxDeposit`, hanya bisa diubah owner) + test | §4: mainnet dimulai dengan "small controlled value", dan ini harus ditegakkan kontrak, bukan janji | Belum ada batas | Angka 0.4 |
-| 3.2 | **Transaksi wallet di web**: approve USDG → `deposit`, `requestWithdrawal`, `claim` dari wallet pengguna, termasuk tampilan fee, network, dan status pending sebelum tanda tangan | §6 Investor, §15 "investor deposits… claims" | Web hanya **membaca** chain. Wallet masih "session" untuk pengembangan | Keputusan 0.7 (+ Privy App ID bila dipilih) |
-| 3.3 | **Layanan operator**: menandatangani `reportNav` berkala dari equity venue, serta `markPositionsClosed` → `settleWithdrawal` | §10: share tidak boleh di-mint dari NAV basi, withdrawal dilacak sampai claim | Alur ini baru ada di script rehearsal lokal. `TRADING_SIGNER_PRIVATE_KEY` belum dipakai layanan mana pun | Wallet B |
-| 3.4 | **Adapter venue live: Lighter** (testnet → mainnet), lewat seam `services/shared/venue-adapters.ts` | §7 Test-money & Live trading, §8 Market service | Venue masih *paper*. `VENUE_ADAPTER=live` sengaja menolak boot | Keputusan 0.5, akun Lighter testnet, API key Lighter (diisi di server, bukan chat) |
-| 3.5 | **Database multi-user + login SIWE** (Sign-In with Ethereum), migrasi ke Postgres | §8 Application storage. Saat ini `SessionState` hanya satu baris "local" (mode review satu operator) | Belum multi-user | `DATABASE_URL` Neon |
-| 3.6 | **Discovery, record, dan treasury dari data on-chain** (indexer → ranking/riwayat/treasury, plus confirmation policy dan penanganan reorg) | §11, §15 "real data with provenance and actual transaction links" | Indexer sudah decode event, tetapi halaman masih memakai data seed berlabel | RPC Alchemy |
-| 3.7 | **AI credits nyata**: estimasi → reservasi → rekonsiliasi pemakaian dari data `usage` gateway, top-up berbayar, lalu "Connect Orbio" per pengguna | §7 AI credits, §9 | ✅ Copilot sudah bisa memanggil Orbio/Anthropic/OpenAI (`AI_PROVIDER`). Ledger kredit masih simulasi | Keputusan 0.6 + API key |
-| 3.8 | **Script testnet**: `rehearse:testnet` (deposit → trade → withdraw → claim + kasus gagal, memakai USDG asli testnet) dan deploy dengan hardware wallet (opsional). ✅ Verifikasi Blockscout sudah ada: `pnpm verify:testnet` / `verify:mainnet` | §4 langkah 2–3 | `rehearse:e2e` hanya untuk chain lokal 31337 | — |
-| 3.9 | **Token / staking / buyback** | §7 Token features, §15 | Berlabel *not deployed* | Keputusan 0.8 (saran: tetap pending) |
-| 3.10 | **Monitoring & alert operator** (health, NAV basi, saldo gas operator, gagal rekonsiliasi), dikirim ke Telegram/Slack/email | §6 Operator, §15 handover | Baru ada `/health` per layanan | Channel alert pilihan Anda |
+| # | Paket | Status (8 Nov 2026) | Cara pakai / yang Anda siapkan |
+|---|---|---|---|
+| 3.1 | **Kontrak v2: batas TVL & deposit, trading account** | ✅ `4296369`. `maxTotalAssets` 1.000 USDG, `maxDepositPerTx` 100 USDG (owner bisa ubah lewat `setLimits`), `setTradingAccount`, `allocateToVenue`, settle memotong fee dan butuh likuiditas cukup, deposit butuh NAV segar. Test kontrak 25, rehearsal 22 | **Deploy ulang v2 di testnet** (Fase 5), lalu `setTradingAccount` dari `/chain/console` |
+| 3.2 | **Transaksi wallet di web** | ✅ `677c38c`. Panel **Invest · on-chain** di Portfolio dan di halaman vault: approve → deposit → request withdrawal → claim. Simulasi dulu sebelum prompt wallet; validasi min/cap/NAV basi; baris ledger hanya setelah receipt sukses | `NEXT_PUBLIC_WALLET_PROVIDER=evm` (MetaMask/Rabby) |
+| 3.3 | **Layanan operator** (`pnpm operator`, :4014) | ✅ `df38234`. `reportNav` dari equity venue (dengan batas perubahan dan hold + alert kalau melonjak), `markPositionsClosed` → `settleWithdrawal`, auto-fund dari wallet B, alokasi kelebihan kas ke trading account. Default `OPERATOR_MODE=dry-run` | Wallet B + env `OPERATOR_*` (lihat `services/operator/README.md`) |
+| 3.4 | **Adapter venue live: Lighter** | ✅ `601845b`. Signer WASM resmi Lighter, order limit IOC dengan slippage, idempotent (`clientOrderIndex` dari id intent), NAV dari `total_asset_value` akun | `VENUE_ADAPTER=live`, `LIVE_TRADING_CONFIRM=yes`, `LIGHTER_NETWORK`, `LIGHTER_ACCOUNT_INDEX`, `LIGHTER_API_KEY_INDEX`, `LIGHTER_API_PRIVATE_KEY` (di server) |
+| 3.5 | **Database multi-user + login SIWE** | ✅ `677c38c`. Sign-In with Ethereum (nonce sekali pakai, cookie HttpOnly, hash token di DB), state per wallet, SQLite (dev) dan **PostgreSQL** (production) | `DATABASE_URL` Postgres → `pnpm db:pg:generate` lalu `pnpm db:pg:deploy`; `APP_ORIGIN` = domain |
+| 3.6 | **Discover, record, treasury dari data on-chain** | ✅ `65564b6`. Indexer (:4016) membaca event vault + transfer USDG keluar dari vault (fee persis), timestamp blok, scan bertahap dari blok deploy. Vault muncul di Discover (tag **on-chain**), halaman vault menampilkan riwayat event dengan link tx, treasury menampilkan fee tercatat | `INDEXER_URL` di web, indexer jalan bersama `pnpm services` |
+| 3.7 | **AI credits nyata** | ✅ `46c3378`. Top-up = transfer USDG ke `CREDITS_TREASURY_ADDRESS`, diverifikasi server dari receipt (sekali per transfer). Tiap panggilan model dipotong sesuai token usage × harga + fee aplikasi; gagal = gratis; tanpa kredit → parser aturan gratis. "Connect Orbio" per pengguna masih menunggu akses partner Orbio | `CREDITS_MODE=enforce`, `CREDITS_TREASURY_ADDRESS`, `AI_PRICE_IN_PER_MTOK` / `AI_PRICE_OUT_PER_MTOK`, `AI_APP_FEE_PCT` |
+| 3.8 | **Script testnet** `rehearse:testnet` | ⏳ belum. Uji testnet sekarang lewat `/chain/console` + panel Invest (manual, bukti ke `docs/rehearsals/`) | — |
+| 3.9 | **Token / staking / buyback** | ⏸ pending (keputusan 0.8), berlabel *not deployed* | — |
+| 3.10 | **Monitoring & alert** (`pnpm monitor`, :4015) | ✅ `df38234`. Health semua service, NAV menua/basi, saldo gas operator, operator macet, withdrawal tertunda, kas claim kurang, vault pause/close-only → **Telegram** (dengan cooldown) | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` → lihat `.env.example` bagian monitor |
 
-Estimasi kasar (dikerjakan berurutan, termasuk test): 3.1 ±1 hari · 3.2 ±2–3 hari · 3.3 ±2 hari ·
-3.4 ±4–7 hari (paling tidak pasti, karena bergantung dokumentasi dan akses Lighter) · 3.5 ±2–3 hari ·
-3.6 ±2–3 hari · 3.7 ±2 hari · 3.8 ±1–2 hari · 3.10 ±1 hari.
+**Test lokal per 8 Nov 2026 (semua hijau):** engine 25 · reconciliation 39 · lighter 44 (+3 wire check) ·
+operator 95 · auth 30 (SQLite **dan** Postgres) · indexer 27 · credits 41 (SQLite **dan** Postgres) ·
+kontrak 25 · rehearsal on-chain 22 · E2E app 10 · **E2E on-chain browser 4** (`pnpm test:e2e:invest`:
+investor SIWE → deposit → withdraw → operator settle → claim; owner console v2; Discover → vault → treasury;
+top-up kredit USDG).
 
 ---
 
@@ -140,14 +143,16 @@ pnpm install                 # postinstall membuat .env + prisma client
 pnpm db:migrate
 pnpm lint && pnpm typecheck
 pnpm test                    # engine 25
-pnpm test:services           # integrasi 39 (+ cross-process 20)
-pnpm test:contracts          # kontrak 18 (+ test paket 3.1)
+pnpm test:services           # reconciliation 39 · lighter 44 · operator 95 · auth 30 · indexer 27 · credits 41
+pnpm test:contracts          # kontrak 25
 pnpm exec playwright install chromium && pnpm test:e2e   # E2E 10
+pnpm test:e2e:invest         # E2E on-chain 4 (menyalakan Hardhat, indexer, Next sendiri — tutup pnpm dev dulu)
 pnpm build
 
 # Rehearsal chain lokal (2 terminal)
 pnpm exec hardhat node --hostname 0.0.0.0 --port 8545
-pnpm rehearse:e2e            # 19 check: deposit→pause→resume→withdraw, crash recovery
+pnpm rehearse:e2e            # 22 check: deposit→pause→resume→withdraw, crash recovery, ringkasan indexer
+# (rehearse:e2e mengubah deployments/31337-e2e.json dan menulis docs/rehearsals/e2e-*.json — buang kalau tidak perlu)
 ```
 
 **Syarat lanjut:** semua hijau, tanpa test yang di-skip.
@@ -191,9 +196,13 @@ Prasyarat: Fase 0–4 selesai (terutama paket 3.1 dan 3.8), dan **VPN menyala**.
 | Operator (wallet B) | `0x3D2FAC269954487a63F51bf059701FbD9647E3Bf` |
 | Fee recipient (wallet C) | `0x8b43AC0f705D18D2C42D12EB2fABe3e45e1045B1` |
 | Parameter | fee deposit/withdraw 1% + 0,10 USDG · min deposit 10 USDG · NAV maks 6 jam · lonjakan NAV maks 20% |
-| Catatan | Deploy **percobaan** — belum ada batas TVL/deposit (paket 3.1). Deploy ulang setelah 3.1 untuk uji penerimaan resmi. |
+| Catatan | Deploy **percobaan** (v1) — belum ada batas TVL/deposit. **Digantikan v2** (paket 3.1): deploy ulang untuk uji penerimaan resmi, lihat 5.8. |
 
 ### 5.7 Uji alur vault lewat **Vault console** (`/chain/console`)
+
+> **Status 8 Nov 2026:** alur utama 8/8 ✅, BelowMinimum ✅, pause (deposit ditolak, penarikan tetap selesai) ✅,
+> resume ✅. Sisa: NAV basi (>6 jam). Bukti dan tx hash ada di `docs/rehearsals/46630-manual-vault-2026-11-08.json`.
+> Kontrak ini versi **sebelum cap (3.1)**, jadi uji ini harus diulang setelah redeploy.
 
 Explorer testnet Robinhood (Blockscout v2.8.0) **tidak mengaktifkan connect wallet**, jadi tab *Write contract*
 hanya bisa dibaca. Karena itu Covar punya halaman sendiri: buka `localhost:3000/chain/console` (atau `/chain` →
@@ -219,17 +228,30 @@ Simpan semua tx hash — itu bukti untuk `docs/rehearsals/46630-manual.json`.
 
 ---
 
+### 5.8 Deploy ulang **vault v2** (wajib sebelum Fase 6–7)
+
+1. `git pull`, lalu dengan VPN menyala: `pnpm preflight:testnet` → `pnpm deploy:testnet` → `pnpm verify:testnet`.
+2. Catat alamat vault v2 baru dari `deployments/46630.json`, lalu ganti `NEXT_PUBLIC_COVAR_VAULT_ADDRESS` dan `OPERATOR_VAULT_ADDRESS` (alamat lama v1 jangan dipakai lagi).
+3. Buka `/chain/console` dengan wallet **A**: pastikan kartu **Caps** menampilkan 1.000 / 100 USDG, lalu **Set trading account** = alamat yang menerima dana untuk venue (untuk testnet: wallet B).
+4. `Allocate to venue` di console = memindahkan kas bebas vault ke trading account (operator juga bisa melakukannya otomatis, `OPERATOR_AUTO_ALLOCATE`).
+5. Ulangi tabel 5.7 (kali ini fee withdrawal dipotong saat settle, jadi D menerima ±9,602 USDG dari 9,8 share).
+6. Uji tambahan v2: deposit 101 USDG harus ditolak `DepositTooLarge`; deposit saat NAV lebih dari 6 jam harus ditolak `StaleNav`; `Allocate` lebih dari kas bebas harus ditolak `InsufficientLiquidity`.
+
 ## Fase 6 — Deploy infrastruktur staging (testnet) 🤝
 
 ### 6.1 Database (Neon)
 1. Buat project Neon dan salin *connection string* (pooled) serta *direct*.
-2. Dev mengubah `prisma/schema.prisma` ke `provider = "postgresql"` (bagian dari paket 3.5).
-3. Jalankan migrasi dari laptop: `DATABASE_URL=<direct> pnpm exec prisma migrate deploy`.
+2. **Tidak perlu** mengubah `prisma/schema.prisma`: skema Postgres diturunkan otomatis ke `prisma/postgres/` (paket 3.5).
+3. Dari laptop (PowerShell), dengan connection string *direct*:
+   ```powershell
+   $env:DATABASE_URL="<direct connection string>"; pnpm db:pg:generate; pnpm db:pg:deploy
+   ```
+4. Di Vercel, perintah build menjadi `pnpm db:pg:generate && pnpm build` supaya client Prisma yang dipakai adalah versi Postgres.
 
 ### 6.2 Execution plane (Railway/Fly/VPS)
-1. Buat service dari repo yang sama dengan perintah start `pnpm services`. Jalankan indexer dan operator sebagai service terpisah (`pnpm indexer`, dan perintah operator dari paket 3.3).
+1. Buat service dari repo yang sama dengan perintah start `pnpm services`. Kalau alamat vault di-set, perintah ini sekaligus menyalakan **operator** (:4014), **indexer** (:4016), dan **monitor** (:4015) selain execution/risk/signer/venue.
 2. Pasang **persistent volume** di `COVAR_STATE_DIR` (default `.covar-state/`). Isinya journal audit untuk rekonsiliasi setelah restart, jadi jangan sampai hilang.
-3. Ekspos publik **hanya** port execution (4010). Risk, signer, venue, dan operator tetap internal.
+3. Ekspos publik **hanya** port execution (4010) dan indexer (4016, hanya-baca) bila web berada di host lain. Risk, signer, venue, operator, dan monitor tetap internal.
 4. Env server (diisi di dashboard host, bukan di repo):
 
 | Key | Nilai |
@@ -238,7 +260,12 @@ Simpan semua tx hash — itu bukti untuk `docs/rehearsals/46630-manual.json`.
 | `VENUE_ADAPTER` | `paper` → `live` setelah paket 3.4 lolos review |
 | `LIGHTER_*` (dari paket 3.4) | URL API, account index, API key index, API private key |
 | `RPC_URL` | Alchemy testnet |
-| `INDEXER_VAULT_ADDRESS` | alamat vault dari Fase 5 |
+| `OPERATOR_VAULT_ADDRESS` | alamat vault v2 (indexer memakai alamat ini juga) |
+| `OPERATOR_PRIVATE_KEY` | key wallet B (operator) |
+| `OPERATOR_CHAIN` | `testnet` |
+| `OPERATOR_MODE` | `dry-run` dulu (hanya log rencana) → `live` setelah log-nya masuk akal |
+| `OPERATOR_VENUE` / `OPERATOR_CLOSE` | `lighter` / `execution` (atau `manual` selama uji) |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | dari @BotFather dan chat tujuan alert |
 | `COVAR_STATE_DIR` | path volume |
 | `RISK_START_EQUITY` dll. | default kecuali ada keputusan lain |
 
@@ -254,10 +281,14 @@ Simpan semua tx hash — itu bukti untuk `docs/rehearsals/46630-manual.json`.
 | `NEXT_PUBLIC_RH_TESTNET_CHAIN_ID` | `46630` |
 | `NEXT_PUBLIC_RH_TESTNET_RPC_URL` | URL RPC (publik atau Alchemy; ingat, nilai `NEXT_PUBLIC_` terlihat di browser) |
 | `NEXT_PUBLIC_COVAR_VAULT_ADDRESS` | alamat vault testnet |
-| `NEXT_PUBLIC_WALLET_PROVIDER` | `evm` (atau `privy` setelah paket 3.2) |
+| `NEXT_PUBLIC_WALLET_PROVIDER` | `evm` |
 | `DATABASE_URL` | Neon pooled |
 | `DIRECT_URL` | Neon direct |
 | `AI_PROVIDER` / `AI_PROVIDER_API_KEY` / `AI_MODEL` | `orbio` / `sk-orbio-…` / opsional |
+| `APP_ORIGIN` | `https://testnet.covar.xyz` (domain staging; SIWE terikat ke origin ini) |
+| `INDEXER_URL` | URL indexer (6.2), dibaca server saja |
+| `CREDITS_MODE` / `CREDITS_TREASURY_ADDRESS` | `enforce` / alamat penerima top-up (mis. wallet C) |
+| `AI_PRICE_IN_PER_MTOK` / `AI_PRICE_OUT_PER_MTOK` / `AI_APP_FEE_PCT` | harga model dari price list provider / fee aplikasi |
 | `EXEC_URL` | URL publik service execution (6.2) |
 
 3. Hubungkan domain staging (mis. `testnet.covar.xyz`) di Vercel → Domains, lalu set DNS sesuai instruksi Vercel.
@@ -273,12 +304,14 @@ Setiap poin harus punya **bukti**: tx hash, screenshot, atau log, yang disimpan 
 - [ ] Creator: buat strategi via chat → review diff → edit → backtest → start/stop practice
 - [ ] Practice, test-money (Lighter testnet), dan vault on-chain **tidak pernah** berbagi saldo atau label
 - [ ] Order test bounded dan idempotent: matikan service di tengah order, restart, pastikan tidak ada order ganda dan rekonsiliasi cocok
+- [ ] Lighter RH testnet: karena testnet Lighter **bukan** chain 46630, danai akun Lighter RH testnet secara terpisah (cara mendapat USDG uji Lighter RH perlu dikonfirmasi ke tim Lighter), jalankan adapter `live` dengan `LIGHTER_NETWORK=rh-testnet`, dan uji order + NAV dari equity akun itu. Alur dana vault → Lighter → vault baru bisa diuji penuh di mainnet 4663 dengan nilai kecil
+- [ ] Kredit Copilot: top-up USDG kecil → saldo bertambah sekali; panggilan Copilot memotong sesuai token; saldo habis → parser aturan gratis dengan pesan jelas
 - [ ] Copilot: tetap dalam izinnya. Uji output invalid, kredit habis, dan provider error, lalu pastikan fallback berjalan dan risk tetap aktif
 - [ ] Creator publish versi baru → notice investor 48 jam → posisi ditangani sesuai aturan
 - [ ] Investor (wallet D): approve → deposit → share bernilai benar → request withdrawal → posisi ditutup → settle → **claim jumlah yang benar**
 - [ ] Fee trading, alokasi creator/platform (80/20), dan biaya AI cocok dengan aktivitas sebenarnya (rekonsiliasi)
 - [ ] **Darurat:** pause deposit + close-only, lalu pastikan withdrawal dan claim **tetap** berfungsi. NAV basi harus membuat deposit ditolak
-- [ ] Discover, record, dan treasury menampilkan data nyata dengan link transaksi explorer
+- [ ] Discover, record, dan treasury menampilkan data nyata dengan link transaksi explorer (vault bertanda **on-chain**; fee di treasury = saldo USDG yang diterima wallet C dari vault)
 - [ ] Token/staking: implemented **atau** tercatat pending (sesuai keputusan 0.8)
 
 **Kasus gagal yang wajib dicoba:** RPC putus, venue menolak order, NAV melampaui batas deviasi,
@@ -343,6 +376,10 @@ Prasyarat: Fase 7 dan 8 lolos penuh.
 | `TRADING_SIGNER_PRIVATE_KEY` | ❌ | ✅ | ❌ | 🔴 |
 | `LIGHTER_*` | ❌ | ✅ | ❌ | 🔴 |
 | `VENUE_ADAPTER`, `COVAR_STATE_DIR`, `RPC_URL`, `INDEXER_VAULT_ADDRESS` | — | ✅ | — | tidak |
+| `OPERATOR_PRIVATE_KEY` | ❌ | ✅ | ❌ | 🔴 |
+| `OPERATOR_*` (selain key), `MONITOR_*`, `INDEXER_*` | — | ✅ | — | tidak |
+| `TELEGRAM_BOT_TOKEN` | — | ✅ | — | 🔴 |
+| `APP_ORIGIN`, `SESSION_*`, `INDEXER_URL`, `CREDITS_*`, `AI_PRICE_*`, `AI_APP_FEE_PCT` | — | — | ✅ | tidak |
 | `DATABASE_URL`, `DIRECT_URL` | lokal: SQLite | — | ✅ | 🔴 |
 | `AI_PROVIDER_API_KEY` | opsional | — | ✅ | 🔴 |
 | `EXEC_URL` | — | — | ✅ | tidak |

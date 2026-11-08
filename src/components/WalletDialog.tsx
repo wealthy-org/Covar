@@ -5,10 +5,16 @@ import { useCovar } from "@/lib/store";
 import { getWalletProvider } from "@/lib/wallet";
 import { Modal } from "./ui";
 import { shortAddr, usd } from "@/lib/format";
+import { signInWithEthereum, signOut, useAuth } from "@/lib/session";
+import { injected } from "@/lib/vaultTx";
+import { useCredits } from "@/lib/creditsClient";
 
 export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { portfolio, walletProviderId, walletGuarantee } = useCovar();
   const [copied, setCopied] = useState(false);
+  const auth = useAuth();
+  const credits = useCredits();
+  const [authErr, setAuthErr] = useState<string | null>(null);
 
   const copy = async () => {
     try {
@@ -32,6 +38,47 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
               gas flows run against Robinhood Chain testnet (46630) once contracts are deployed.
             </div>
           </div>
+        </div>
+
+        <div className="panel stack gap-8" style={{ padding: 14 }} data-testid="siwe-panel">
+          <div className="row between gap-8">
+            <span className="tiny">Account</span>
+            <span className={auth.status === "signed-in" ? "badge badge-green" : "badge badge-outline"}>
+              {auth.status === "signed-in" ? "Signed in" : auth.status === "signing" ? "Waiting for signature…" : "Not signed in"}
+            </span>
+          </div>
+          {auth.status === "signed-in" && auth.user ? (
+            <>
+              <span className="small">
+                <span className="mono">{shortAddr(auth.user.address, 8)}</span> · proven by a Sign-In with Ethereum signature. Your
+                strategies, practice runs and history sync to this account on any device.
+              </span>
+              <button className="btn btn-secondary btn-sm" onClick={() => void signOut()}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="small">
+                Sign a free message (no gas, no transaction) to prove you own your wallet and keep your data across devices.
+              </span>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={auth.status === "signing" || !injected()}
+                onClick={() => {
+                  setAuthErr(null);
+                  void signInWithEthereum().then((r) => !r.ok && setAuthErr(r.error ?? "Sign-in failed"));
+                }}
+              >
+                {injected() ? "Sign in with Ethereum" : "Install MetaMask or Rabby to sign in"}
+              </button>
+              {(authErr ?? auth.error) && (
+                <span className="tiny" role="alert" style={{ color: "var(--negative)" }}>
+                  {authErr ?? auth.error}
+                </span>
+              )}
+            </>
+          )}
         </div>
 
         <div className="panel" style={{ padding: 14 }}>
@@ -70,13 +117,13 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
           </div>
           <div className="panel grow" style={{ padding: 14 }}>
             <span className="tiny">Copilot credits</span>
-            <div className="strong num">{usd(portfolio.creditUsd)}</div>
+            <div className="strong num">{credits.balanceUsd === null ? "—" : usd(credits.balanceUsd)}</div>
           </div>
         </div>
 
         <p className="small">
-          Deposits, withdrawals and vault shares in this build are simulated against our own vault specification so the
-          full investor path can be reviewed before any contract is deployed. Nothing here moves real value.
+          Balances on this card are the practice session&apos;s. Real deposits go through the <strong>Invest · on-chain</strong>{" "}
+          panel (Portfolio, or an agent with a deployed vault) and are signed in your own wallet.
         </p>
       </div>
     </Modal>

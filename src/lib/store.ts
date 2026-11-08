@@ -1,7 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { Agent, AppNotification, CovarState, Holding, LedgerRow, NotificationKind, PracticeRun, Strategy } from "./types";
+import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, NotificationKind, PracticeRun, Strategy } from "./types";
+import { vaultFeed } from "./vaultAgent";
 import { getWalletProvider } from "./wallet";
 import { seedState } from "./seed";
 import { PLATFORM_LIMITS } from "./strategy";
@@ -35,31 +36,86 @@ function persist() {
  * would be misleading, because durability is not a user claim.        */
 
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
+// Local edits the server has not acknowledged yet survive reloads via this flag,
+// so a reload inside the debounce window can never let an older server copy win.
+const DIRTY_KEY = "covar.state.dirty";
+let localVersion = 0;
+const markDirty = (on: boolean) => {
+  try {
+    if (on) window.localStorage.setItem(DIRTY_KEY, "1");
+    else window.localStorage.removeItem(DIRTY_KEY);
+  } catch {
+    /* storage disabled */
+  }
+};
+const isDirty = () => {
+  try {
+    return window.localStorage.getItem(DIRTY_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+function pushNow(keepalive = false) {
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = null;
+  const sentVersion = localVersion;
+  return fetch("/api/state", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(state),
+    keepalive,
+  })
+    .then((r) => r.json())
+    .then((r) => {
+      if (r?.ok && r.savedAt) {
+        state = { ...state, savedAt: r.savedAt };
+        persist();
+        if (sentVersion === localVersion) markDirty(false);
+      }
+    })
+    .catch(() => {
+      /* offline, signed out or DB not configured — localStorage is the fallback */
+    });
+}
 
 function scheduleDbSync() {
   if (typeof window === "undefined") return;
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => {
-    void fetch("/api/state", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(state),
-    })
-      .then((r) => r.json())
-      .then((r) => {
-        if (r?.savedAt) state = { ...state, savedAt: r.savedAt };
-      })
-      .catch(() => {
-        /* offline or DB not configured — localStorage is the fallback */
-      });
-  }, 1500);
+  syncTimer = setTimeout(() => void pushNow(), 1500);
+}
+
+if (typeof window !== "undefined") {
+  // leaving the page inside the debounce window: send now, the browser keeps it alive
+  window.addEventListener("pagehide", () => {
+    if (syncTimer) void pushNow(true);
+  });
 }
 
 async function hydrateFromDb() {
   try {
     const res = await fetch("/api/state", { cache: "no-store" });
     const data = await res.json();
+    if (data?.ok && !data.state && data.owner && data.owner !== "local" && state.owner && state.owner !== data.owner) {
+      // signed in as a new account on a device holding someone else's data: start clean
+      state = { ...seedState(), owner: data.owner };
+      persist();
+      emit();
+      return;
+    }
+    // unacknowledged local edits win over the server copy for the same owner
+    if (data?.ok && isDirty() && (!data.owner || data.owner === "local" || data.owner === state.owner)) {
+      void pushNow();
+      return;
+    }
     if (!data?.ok || !data?.state) return;
+    // a different owner's snapshot on this device is never merged — the server copy wins
+    if (data.owner && data.owner !== "local" && state.owner !== data.owner) {
+      state = { ...data.state, owner: data.owner, savedAt: data.savedAt } as CovarState;
+      persist();
+      emit();
+      return;
+    }
     const serverSaved = Date.parse(data.savedAt ?? data.state.savedAt ?? "");
     const localSaved = Date.parse((state as { savedAt?: string }).savedAt ?? "");
     if (Number.isFinite(serverSaved) && (!Number.isFinite(localSaved) || serverSaved > localSaved)) {
@@ -92,6 +148,8 @@ function pushNotification(
 
 function set(next: CovarState) {
   state = { ...next };
+  localVersion++;
+  markDirty(true);
   persist();
   scheduleDbSync();
   emit();
@@ -118,9 +176,30 @@ export function hydrate() {
 const subscribe = (l: () => void) => {
   hydrate();
   listeners.add(l);
-  return () => listeners.delete(l);
+  const offFeed = vaultFeed.subscribe(l);
+  return () => {
+    listeners.delete(l);
+    offFeed();
+  };
 };
-const getSnapshot = () => state;
+/**
+ * Snapshot = persisted state + the on-chain vault record (3.6). The vault record is
+ * derived from chain data on every load and never written to localStorage or the DB.
+ */
+let derivedFrom: { s: CovarState; agent: Agent; creator: Creator } | null = null;
+let derived: CovarState = state;
+const getSnapshot = () => {
+  const { agent, creator } = vaultFeed.get();
+  if (!agent || !creator) return state;
+  if (derivedFrom?.s === state && derivedFrom.agent === agent && derivedFrom.creator === creator) return derived;
+  derived = {
+    ...state,
+    agents: [agent, ...state.agents.filter((a) => a.id !== agent.id)],
+    creators: [creator, ...state.creators.filter((c) => c.id !== creator.id)],
+  };
+  derivedFrom = { s: state, agent, creator };
+  return derived;
+};
 const getServerSnapshot = () => seed;
 
 let seed = seedState();
@@ -155,6 +234,54 @@ export const actions = {
     persist();
     emit();
     return { ok: true };
+  },
+
+  /**
+   * Called after a successful Sign-In with Ethereum. The account's server copy wins;
+   * a brand-new account adopts this device's anonymous work, but never another
+   * account's data left on a shared device.
+   */
+  async adoptAccount(address: string) {
+    if (syncTimer) clearTimeout(syncTimer);
+    const owner = address.toLowerCase();
+    if (state.owner === owner && isDirty()) {
+      // same account signing in again with unsynced local edits: keep them, push them
+      void pushNow();
+      return;
+    }
+    try {
+      const data = await fetch("/api/state", { cache: "no-store" }).then((r) => r.json());
+      if (data?.ok && data.state) {
+        state = { ...data.state, owner, savedAt: data.savedAt } as CovarState;
+        persist();
+        emit();
+        return;
+      }
+    } catch {
+      /* fall through: keep working locally */
+    }
+    const base = state.owner && state.owner !== owner ? { ...seedState(), walletConnected: state.walletConnected, walletProviderId: state.walletProviderId, walletGuarantee: state.walletGuarantee } : state;
+    set({ ...base, owner });
+  },
+
+  /** Signed out: this device forgets the account's data (the server keeps it). */
+  forgetAccount() {
+    if (syncTimer) clearTimeout(syncTimer);
+    markDirty(false);
+    state = { ...seedState(), owner: undefined };
+    persist();
+    emit();
+  },
+
+  /**
+   * Records a CONFIRMED on-chain vault transaction (hash from the wallet, receipt
+   * status 1). The only ledger rows that carry a tx hash; idempotent per hash.
+   */
+  recordChainTx(input: { kind: "deposit" | "withdrawal_request" | "withdrawal_claim"; label: string; amountUsd: number; txHash: string; agentId?: string; note?: string }) {
+    if (state.portfolio.ledger.some((l) => l.txHash === input.txHash)) return;
+    const row: LedgerRow = { id: `tx-${input.txHash.slice(2, 14)}`, ts: new Date().toISOString(), state: input.kind === "withdrawal_request" ? "pending" : "settled", ...input };
+    const next = { ...state, portfolio: { ...state.portfolio, ledger: [row, ...state.portfolio.ledger] } };
+    set(pushNotification(next, { kind: "money", title: input.label, body: `Confirmed on-chain · ${input.txHash.slice(0, 10)}…`, href: "/portfolio" }));
   },
 
   disconnectWallet() {
@@ -548,35 +675,6 @@ export const actions = {
     return { ok: true };
   },
 
-  addCredits(usd: number) {
-    const creditsNext: CovarState = {
-      ...state,
-      portfolio: {
-        ...state.portfolio,
-        creditUsd: state.portfolio.creditUsd + usd,
-        ledger: [
-          {
-            id: uid("l"),
-            ts: new Date().toISOString(),
-            kind: "ai_credit",
-            label: "Copilot credits topped up",
-            amountUsd: -usd,
-            state: "settled",
-            note: "Service credits are a liability, not platform revenue.",
-          },
-          ...state.portfolio.ledger,
-        ],
-      },
-    };
-    set(
-      pushNotification(creditsNext, {
-        kind: "copilot",
-        title: "Copilot credits topped up",
-        body: `$${usd.toFixed(2)} added. Credits are a service liability, not platform revenue. Stops, exits and the emergency close path never depend on this balance.`,
-        href: "/studio",
-      })
-    );
-  },
 
   reset() {
     state = seedState();

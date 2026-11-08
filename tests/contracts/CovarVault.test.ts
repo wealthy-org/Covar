@@ -9,7 +9,7 @@ import { time } from "@nomicfoundation/hardhat-network-helpers";
  */
 const USDG = (n: number | string) => ethers.parseUnits(String(n), 6);
 
-async function deploy() {
+async function deploy(opts: { launchLimits?: boolean } = {}) {
   const [owner, operator, alice, bob, feeRecipient] = await ethers.getSigners();
   const Token = await ethers.getContractFactory("MockUSDG");
   const token = await Token.deploy();
@@ -24,6 +24,8 @@ async function deploy() {
     await token.connect(who).approve(await vault.getAddress(), ethers.MaxUint256);
   }
   await token.mint(feeRecipient.address, 0);
+  // Most behaviour tests use 1,000 USDG deposits; the launch-limit tests keep the defaults.
+  if (!opts.launchLimits) await vault.setLimits(USDG(1_000_000), USDG(100_000));
 
   return { vault, token, owner, operator, alice, bob, feeRecipient };
 }
@@ -129,7 +131,7 @@ describe("CovarVault", () => {
     await vault.connect(operator).markPositionsClosed(alice.address);
     await expect(
       vault.connect(operator).settleWithdrawal(alice.address, USDG(5_000))
-    ).to.be.revertedWithCustomError(vault, "TransferFailed");
+    ).to.be.revertedWithCustomError(vault, "InsufficientLiquidity");
   });
 
   it("completes the full investor path: deposit → request → close → settle → claim", async () => {
@@ -224,4 +226,106 @@ describe("CovarVault", () => {
     expect(net).to.equal(USDG(250) - USDG(2.5) - USDG(0.1));
     expect(shares).to.equal(net);
   });
+
+  // ------------------------------------------------------------- v2: launch limits
+  describe("v2 launch limits", () => {
+    it("ships with 1,000 USDG TVL cap and 100 USDG per-deposit cap", async () => {
+      const { vault } = await deploy({ launchLimits: true });
+      expect(await vault.maxTotalAssets()).to.equal(USDG(1000));
+      expect(await vault.maxDepositPerTx()).to.equal(USDG(100));
+    });
+
+    it("rejects a single deposit above the per-deposit cap", async () => {
+      const { vault, operator, alice } = await deploy({ launchLimits: true });
+      await vault.connect(operator).reportNav(0);
+      await expect(vault.connect(alice).deposit(USDG(100.01))).to.be.revertedWithCustomError(vault, "DepositTooLarge");
+      await expect(vault.connect(alice).deposit(USDG(100))).to.emit(vault, "Deposit");
+    });
+
+    it("rejects the deposit that would push reported assets over the TVL cap", async () => {
+      const { vault, operator, alice, bob } = await deploy({ launchLimits: true });
+      await vault.connect(operator).reportNav(0);
+      for (let i = 0; i < 10; i++) await vault.connect(i % 2 ? bob : alice).deposit(USDG(100)); // 10 × 98.9 = 989
+      expect(await vault.reportedAssets()).to.equal(USDG(989));
+      await expect(vault.connect(alice).deposit(USDG(20))).to.be.revertedWithCustomError(vault, "CapExceeded"); // +19.7
+      await expect(vault.connect(alice).deposit(USDG(11))).to.emit(vault, "Deposit"); // +10.79 → 999.79
+    });
+
+    it("lets only the owner change limits, within sane bounds", async () => {
+      const { vault, operator } = await deploy({ launchLimits: true });
+      await expect(vault.connect(operator).setLimits(USDG(5000), USDG(500))).to.be.revertedWithCustomError(vault, "NotOwner");
+      await expect(vault.setLimits(USDG(5000), USDG(5))).to.be.revertedWith("deposit cap < minimum");
+      await expect(vault.setLimits(USDG(50), USDG(100))).to.be.revertedWith("tvl cap < deposit cap");
+      await expect(vault.setLimits(USDG(5000), USDG(500))).to.emit(vault, "LimitsChanged").withArgs(USDG(5000), USDG(500));
+    });
+  });
+
+  // ------------------------------------------------------ v2: trading capital path
+  describe("v2 trading account", () => {
+    it("allocates only to the owner-set trading account, never elsewhere", async () => {
+      const { vault, token, operator, alice, bob } = await deploy();
+      await vault.connect(operator).reportNav(0);
+      await vault.connect(alice).deposit(USDG(1000));
+      await expect(vault.connect(operator).allocateToVenue(USDG(100))).to.be.revertedWithCustomError(vault, "NoTradingAccount");
+      await expect(vault.connect(operator).setTradingAccount(bob.address)).to.be.revertedWithCustomError(vault, "NotOwner");
+      await expect(vault.setTradingAccount(bob.address)).to.emit(vault, "TradingAccountChanged");
+      await expect(vault.connect(alice).allocateToVenue(USDG(100))).to.be.revertedWithCustomError(vault, "NotOperator");
+
+      const before = await token.balanceOf(bob.address);
+      await expect(vault.connect(operator).allocateToVenue(USDG(600))).to.emit(vault, "AllocatedToVenue").withArgs(bob.address, USDG(600));
+      expect((await token.balanceOf(bob.address)) - before).to.equal(USDG(600));
+      expect(await vault.totalAllocated()).to.equal(USDG(600));
+      // NAV is unchanged by an allocation: capital moved, it did not disappear
+      expect(await vault.reportedAssets()).to.equal(USDG(989.9));
+    });
+
+    it("blocks allocation in close-only mode", async () => {
+      const { vault, operator, alice, bob } = await deploy();
+      await vault.connect(operator).reportNav(0);
+      await vault.connect(alice).deposit(USDG(1000));
+      await vault.setTradingAccount(bob.address);
+      await vault.pause(false, true);
+      await expect(vault.connect(operator).allocateToVenue(USDG(10))).to.be.revertedWithCustomError(vault, "CloseOnly_");
+    });
+
+    it("reserves settled claims: they can be neither allocated nor used for another settlement", async () => {
+      const { vault, token, operator, alice, bob, owner } = await deploy();
+      await vault.connect(operator).reportNav(0);
+      await vault.connect(alice).deposit(USDG(1000)); // 989.9
+      await vault.connect(bob).deposit(USDG(1000)); // 989.9 → vault holds 1979.8
+      await vault.setTradingAccount(owner.address);
+
+      // alice exits fully: 989.9 settled, 979.90 reserved for her claim
+      await vault.connect(alice).requestWithdrawal(USDG(989.9));
+      await vault.connect(operator).markPositionsClosed(alice.address);
+      await vault.connect(operator).settleWithdrawal(alice.address, USDG(989.9));
+      const reserved = await vault.reservedForClaims();
+      expect(reserved).to.equal(USDG(979.901));
+      const free = await vault.availableLiquidity();
+      expect(free).to.equal((await token.balanceOf(await vault.getAddress())) - reserved);
+
+      // the operator cannot ship alice's money to the venue
+      await expect(vault.connect(operator).allocateToVenue(free + 1n)).to.be.revertedWithCustomError(vault, "InsufficientLiquidity");
+      await vault.connect(operator).allocateToVenue(free); // everything that is free goes out
+
+      // bob's settlement cannot be funded from alice's reserve
+      await vault.connect(bob).requestWithdrawal(USDG(989.9));
+      await vault.connect(operator).markPositionsClosed(bob.address);
+      await expect(vault.connect(operator).settleWithdrawal(bob.address, USDG(989.9))).to.be.revertedWithCustomError(
+        vault,
+        "InsufficientLiquidity",
+      );
+
+      // alice can still claim in full, and the reserve drops to zero
+      await expect(vault.connect(alice).claim()).to.emit(vault, "WithdrawalClaimed").withArgs(alice.address, reserved);
+      expect(await vault.reservedForClaims()).to.equal(0);
+
+      // venue returns capital → bob settles
+      await token.connect(owner).transfer(await vault.getAddress(), USDG(989.9));
+      await vault.connect(operator).settleWithdrawal(bob.address, USDG(989.9));
+      await vault.connect(bob).claim();
+      expect(await vault.reservedForClaims()).to.equal(0);
+    });
+  });
 });
+

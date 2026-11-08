@@ -28,6 +28,10 @@ export const SEL = {
   settleWithdrawal: "0xfa8c360c",
   claim: "0x4e71d92d",
   pause: "0xddeb5094",
+  // v2 writes
+  allocateToVenue: "0x87cb45ab",
+  setLimits: "0xc4590d3f",
+  setTradingAccount: "0x1fc8aca3",
   // erc20
   approve: "0x095ea7b3",
   allowance: "0xdd62ed3e",
@@ -40,6 +44,13 @@ export const SEL = {
   minDeposit: "0x41b3d185",
   navPerShare: "0xae097223",
   asset: "0x38d52e0f",
+  // v2 reads
+  maxTotalAssets: "0xd820f492",
+  maxDepositPerTx: "0x4e2e8d60",
+  tradingAccount: "0x09b57d1e",
+  totalAllocated: "0x45f7f249",
+  reservedForClaims: "0x12b8984a",
+  availableLiquidity: "0x74375359",
 } as const;
 
 /** Custom errors of CovarVault, with a plain explanation of what to do. */
@@ -56,6 +67,14 @@ export const VAULT_ERRORS: Record<string, { name: string; hint: string }> = {
   "0xcffd93ac": { name: "NoRequest", hint: "Nothing to claim yet — the withdrawal must be settled by the operator first." },
   "0xde4168ba": { name: "WrongState", hint: "The withdrawal request is not in the right step for this action." },
   "0x90b8ec18": { name: "TransferFailed", hint: "Token transfer failed — usually missing approval, low balance, or the vault does not hold the funds." },
+  // v2
+  "0xa4875a49": { name: "CapExceeded", hint: "This deposit would push the vault over its TVL cap. Deposit less, or the owner raises the cap." },
+  "0xc56d46d3": { name: "DepositTooLarge", hint: "Above the per-deposit cap. Split it into smaller deposits." },
+  "0xbb55fd27": {
+    name: "InsufficientLiquidity",
+    hint: "The vault's free USDG (balance minus settled-but-unclaimed withdrawals) is too low. Return capital from the venue first.",
+  },
+  "0xc56b549b": { name: "NoTradingAccount", hint: "The owner has not set a trading account yet." },
 };
 
 export const REQUEST_STATES = ["None", "ClosingPositions", "Settling", "Claimable", "Claimed"] as const;
@@ -153,6 +172,37 @@ export async function readAccount(vault: string, asset: string, account: string,
     navWad: word(nav, 0),
     request: decodeRequest(req),
   };
+}
+
+/** v2 fields. `null` when the vault is a v1 deployment (the getters do not exist). */
+export interface VaultV2 {
+  maxTotalAssets: bigint;
+  maxDepositPerTx: bigint;
+  tradingAccount: string;
+  totalAllocated: bigint;
+  reservedForClaims: bigint;
+  availableLiquidity: bigint;
+}
+
+export async function readV2(vault: string, chain: ChainId): Promise<VaultV2 | null> {
+  try {
+    const [tvl, perTx, ta, alloc, reserved, free] = await Promise.all(
+      [SEL.maxTotalAssets, SEL.maxDepositPerTx, SEL.tradingAccount, SEL.totalAllocated, SEL.reservedForClaims, SEL.availableLiquidity].map(
+        (sel) => ethCall(vault, sel, chain),
+      ),
+    );
+    if ([tvl, perTx, ta].some((h) => !h || h === "0x")) return null;
+    return {
+      maxTotalAssets: word(tvl, 0),
+      maxDepositPerTx: word(perTx, 0),
+      tradingAccount: wordAddress(ta, 0),
+      totalAllocated: word(alloc, 0),
+      reservedForClaims: word(reserved, 0),
+      availableLiquidity: word(free, 0),
+    };
+  } catch {
+    return null; // v1 vault: getters revert
+  }
 }
 
 function decodeRequest(hex: string) {

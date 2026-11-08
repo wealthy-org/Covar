@@ -1,0 +1,163 @@
+// GENERATED from prisma/schema.prisma by scripts/prisma-pg.mjs — DO NOT EDIT.
+// Covar application storage — Prisma over SQLite (dev) or PostgreSQL (shared
+// deployment: `pnpm db:pg:generate`, which derives prisma/postgres/schema.prisma
+// from this file — edit THIS file only).
+//
+// This is the durable home for web-side records the brief requires (§8): users,
+// strategy versions, practice runs, ledger rows, credits and notifications.
+// The execution plane intentionally keeps its OWN journals (separate processes,
+// separate audit trails) — this DB never holds order state, and the services never
+// read from it. Switch provider to postgresql for a shared deployment; the schema
+// uses no SQLite-specific types.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ------------------------------------------------------------------ identity
+// A user IS a wallet address (lower-case), proven by a Sign-In with Ethereum
+// (EIP-4361) signature. No email, no password, no custodial key.
+model User {
+  address     String   @id
+  createdAt   DateTime @default(now())
+  lastLoginAt DateTime @default(now())
+  lastChainId Int?
+}
+
+// One-time SIWE nonces. Consumed on first use; expired rows are swept.
+model AuthNonce {
+  nonce     String    @id
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  @@index([expiresAt])
+}
+
+// Login sessions. Only the SHA-256 of the cookie token is stored, so a DB leak
+// does not hand out live sessions.
+model AuthSession {
+  tokenHash String    @id
+  address   String
+  chainId   Int
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  @@index([address])
+}
+
+// ------------------------------------------------------------------ app state
+// `sessionId` below is the owner: the signed-in wallet address (lower-case), or
+// "local" for the anonymous single-operator dev mode (disabled in production).
+
+// Whole-session snapshot, synced from the client store. One row per owner; it
+// stores the JSON verbatim so app version changes never require a column
+// migration just to load older state.
+model SessionState {
+  id        String   @id @default("local")
+  savedAt   DateTime @updatedAt
+  stateJson String
+}
+
+// A notification, durable across reloads. Written only by real state transitions —
+// never by marketing copy.
+model Notification {
+  id        String
+  ts        DateTime
+  kind      String // practice | publish | money | risk | copilot | system
+  title     String
+  body      String
+  href      String?
+  read      Boolean  @default(false)
+  sessionId String   @default("local")
+
+  @@id([sessionId, id])
+  @@index([sessionId, ts])
+}
+
+// Append-only money/AI ledger rows. The chain ledger is the contract; this is the
+// web-side record for the session — labelled simulated until deposits settle on-chain.
+model LedgerEntry {
+  id        String
+  ts        DateTime
+  kind      String // deposit | withdrawal_request | withdrawal_claim | trade_fee | ai_credit
+  agentId   String?
+  label     String
+  amountUsd Float
+  state     String // pending | settled | failed
+  txHash    String? // only ever populated with a hash returned by a chain RPC
+  note      String?
+  sessionId String  @default("local")
+
+  @@id([sessionId, id])
+  @@index([sessionId, ts])
+}
+
+// Strategy drafts and published versions. Version history is first-class: a row is
+// immutable once `publishedAt` is set; edits create a new row.
+model StrategyVersion {
+  id         String
+  agentId    String
+  version    Int
+  name       String
+  rulesJson  String
+  publishedAt DateTime?
+  createdAt  DateTime  @default(now())
+  sessionId  String    @default("local")
+
+  @@id([sessionId, id])
+  @@unique([agentId, version, sessionId])
+}
+
+// Practice runs with their price-mode provenance (live marks vs simulated ticks).
+model PracticeRun {
+  agentId     String
+  startedAt   DateTime
+  capitalUsd  Float
+  pnlUsd      Float    @default(0)
+  ticks       Int      @default(0)
+  status      String   // running | stopped
+  priceMode   String   // live | simulated
+  entryPrice  Float?
+  lastPrice   Float?
+  priceSource String?
+  sessionId   String   @default("local")
+
+  @@id([sessionId, agentId])
+}
+
+// ------------------------------------------------------------------ AI credits (3.7)
+// Append-only ledger in micro-USD (1 USDG = 1 USD = 1_000_000). Balance = SUM(amount).
+// Top-ups are verified on-chain USDG transfers to the credits treasury; the
+// (chainId, txHash, logIndex) key makes crediting the same transfer twice
+// impossible. Usage rows carry the provider's token counts and the price basis.
+// Rows are never updated or deleted.
+model CreditEntry {
+  id           String   @id
+  owner        String // wallet address, lower-case
+  kind         String // topup | usage | grant | refund
+  amount       BigInt // micro-USD, signed: + topup/grant/refund, − usage
+  createdAt    DateTime @default(now())
+  // top-up evidence
+  chainId      Int?
+  txHash       String?
+  logIndex     Int?
+  // usage evidence
+  provider     String?
+  model        String?
+  tokensIn     Int?
+  tokensOut    Int?
+  providerCost BigInt? // micro-USD owed to the AI provider for this call
+  appFee       BigInt? // micro-USD application fee (platform revenue)
+  priceBasis   String? // provider-reported | price-table
+  note         String?
+
+  @@unique([chainId, txHash, logIndex])
+  @@index([owner, createdAt])
+}

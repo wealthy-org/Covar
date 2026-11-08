@@ -17,6 +17,8 @@ import {
   isAddress,
   parseUnits,
   readAccount,
+  readV2,
+  type VaultV2,
   readRequests,
   sendTx,
   switchChain,
@@ -40,6 +42,7 @@ export default function VaultConsolePage() {
   const [vault, setVault] = useState<VaultState | null>(null);
   const [mine, setMine] = useState<ConsoleSnapshot | null>(null);
   const [queue, setQueue] = useState<PendingRequest[]>([]);
+  const [v2, setV2] = useState<VaultV2 | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -52,6 +55,10 @@ export default function VaultConsolePage() {
   const [withdrawInput, setWithdrawInput] = useState("");
   const [investorInput, setInvestorInput] = useState("");
   const [settleInput, setSettleInput] = useState("");
+  const [allocateInput, setAllocateInput] = useState("");
+  const [tvlCapInput, setTvlCapInput] = useState("");
+  const [perTxCapInput, setPerTxCapInput] = useState("");
+  const [tradingInput, setTradingInput] = useState("");
 
   useEffect(() => {
     setHasWallet(!!injected());
@@ -87,12 +94,14 @@ export default function VaultConsolePage() {
       const v = await readVault(vaultAddr);
       setVault(v);
       setReadError(null);
-      const [m, q] = await Promise.all([
+      const [m, q, x] = await Promise.all([
         account ? readAccount(vaultAddr, v.asset, account, EXPECTED_CHAIN_ID) : Promise.resolve(null),
         readRequests(vaultAddr, EXPECTED_CHAIN_ID),
+        readV2(vaultAddr, EXPECTED_CHAIN_ID),
       ]);
       setMine(m);
       setQueue(q);
+      setV2(x);
     } catch (e) {
       setReadError(`${(e as Error).message}. If the RPC is unreachable, enable a VPN and retry.`);
     }
@@ -312,6 +321,32 @@ export default function VaultConsolePage() {
                   {vault.closeOnly ? "Close-only" : vault.depositsPaused ? "Deposits paused" : "Deposits open"}
                 </span>
               </div>
+              {v2 ? (
+                <>
+                  <div className="row between">
+                    <span className="tiny">TVL cap · per deposit</span>
+                    <span className="small num" data-testid="console-caps">
+                      {formatUnits(v2.maxTotalAssets, dec)} · {formatUnits(v2.maxDepositPerTx, dec)} {sym}
+                    </span>
+                  </div>
+                  <div className="row between">
+                    <span className="tiny">Free liquidity · reserved for claims</span>
+                    <span className="small num" data-testid="console-liquidity">
+                      {formatUnits(v2.availableLiquidity, dec)} · {formatUnits(v2.reservedForClaims, dec)}
+                    </span>
+                  </div>
+                  <div className="row between">
+                    <span className="tiny">Trading account · sent so far</span>
+                    <span className="small num" data-testid="console-trading">
+                      {/^0x0{40}$/.test(v2.tradingAccount) ? "not set" : shortAddr(v2.tradingAccount)} · {formatUnits(v2.totalAllocated, dec)}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="tiny" data-testid="console-v1">
+                  v1 vault (no on-chain caps or trading account). Redeploy v2 before mainnet.
+                </span>
+              )}
             </>
           )}
           {mine && (
@@ -381,7 +416,7 @@ export default function VaultConsolePage() {
           />
           <ActionRow
             label="Deposit"
-            hint={`Minimum ${mine ? formatUnits(mine.minDeposit, dec) : "10"} ${sym}. Fee ${vault ? `${vault.depositFeeBps / 100}% + ${vault.depositFeeFlat}` : "1% + 0.1"} ${sym}. Needs a fresh NAV.`}
+            hint={`Minimum ${mine ? formatUnits(mine.minDeposit, dec) : "10"}${v2 ? `, maximum ${formatUnits(v2.maxDepositPerTx, dec)}` : ""} ${sym}. Fee ${vault ? `${vault.depositFeeBps / 100}% + ${vault.depositFeeFlat}` : "1% + 0.1"} ${sym}. Needs a fresh NAV.`}
             value={depositInput}
             onChange={setDepositInput}
             suffix={sym}
@@ -428,6 +463,18 @@ export default function VaultConsolePage() {
             busy={busy}
             onRun={() => run(`Report NAV ${navInput} ${sym}`, vault!.address, () => calldata(SEL.reportNav, encUint(parseUnits(navInput, dec))))}
           />
+          {v2 && (
+            <ActionRow
+              label="Allocate to venue"
+              hint={`Sends free ${sym} to the trading account set by the owner (${/^0x0{40}$/.test(v2.tradingAccount) ? "not set yet" : shortAddr(v2.tradingAccount)}). Free now: ${formatUnits(v2.availableLiquidity, dec)} ${sym}. NAV does not change — the capital moved.`}
+              value={allocateInput}
+              onChange={setAllocateInput}
+              suffix={sym}
+              disabled={disabled}
+              busy={busy}
+              onRun={() => run(`Allocate ${allocateInput} ${sym} to venue`, vault!.address, () => calldata(SEL.allocateToVenue, encUint(parseUnits(allocateInput || "0", dec))))}
+            />
+          )}
           <span className="tiny strong">Withdrawal queue</span>
           {queue.length === 0 ? (
             <span className="tiny">No withdrawal requests yet.</span>
@@ -543,6 +590,44 @@ export default function VaultConsolePage() {
           </button>
         </div>
         <span className="tiny">Pausing never blocks claims or withdrawal settlement — test that too.</span>
+        {v2 && (
+          <>
+            <hr className="divider" />
+            <span className="tiny strong">Launch limits</span>
+            <div className="row gap-8 wrap">
+              <input className="input num" style={{ maxWidth: 160 }} placeholder={`TVL cap ${sym}`} value={tvlCapInput} onChange={(e) => setTvlCapInput(e.target.value)} aria-label="TVL cap" />
+              <input className="input num" style={{ maxWidth: 160 }} placeholder={`per deposit ${sym}`} value={perTxCapInput} onChange={(e) => setPerTxCapInput(e.target.value)} aria-label="Per-deposit cap" />
+              <button
+                className="btn btn-secondary"
+                disabled={disabled}
+                onClick={() =>
+                  run(`Set limits ${tvlCapInput} / ${perTxCapInput} ${sym}`, vault!.address, () =>
+                    calldata(SEL.setLimits, encUint(parseUnits(tvlCapInput, dec)), encUint(parseUnits(perTxCapInput, dec)))
+                  )
+                }
+              >
+                Set limits
+              </button>
+            </div>
+            <span className="tiny strong">Trading account (venue deposit address)</span>
+            <div className="row gap-8 wrap">
+              <input className="input mono" style={{ fontSize: 12, maxWidth: 420 }} placeholder="0x… Lighter intent / deposit address" value={tradingInput} onChange={(e) => setTradingInput(e.target.value)} aria-label="Trading account" />
+              <button
+                className="btn btn-secondary"
+                disabled={disabled}
+                onClick={() =>
+                  run(`Set trading account ${tradingInput.slice(0, 10)}…`, vault!.address, () => {
+                    if (!isAddress(tradingInput)) throw new Error("Trading account address is not valid");
+                    return calldata(SEL.setTradingAccount, encAddress(tradingInput.trim()));
+                  })
+                }
+              >
+                Set trading account
+              </button>
+            </div>
+            <span className="tiny">The only address the operator can ever send capital to. Double-check it: capital sent there is under the venue account&apos;s control.</span>
+          </>
+        )}
       </div>
 
       {/* log */}

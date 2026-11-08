@@ -102,10 +102,12 @@ export function Builder() {
           questions = data.questions;
           engineLabel =
             data.engine === "model"
-              ? data.providerLabel
+              ? `${data.providerLabel}${data.credits ? ` · charged $${data.credits.chargedUsd.toFixed(4)} of credits (balance $${data.credits.balanceUsd.toFixed(4)})` : ""}`
               : data.engine === "rules-fallback"
-                ? `rules parser (model failed)`
-                : "rules parser — no model key configured";
+                ? `rules parser (model failed${data.credits ? `; provider usage still billed $${data.credits.chargedUsd.toFixed(4)}` : ""})`
+                : data.engine === "rules-credits"
+                  ? `rules parser, free (${data.note ?? "no Copilot credits"})`
+                  : "rules parser — no model key configured";
         }
       } catch {
         /* route unreachable — fall through to the local parser */

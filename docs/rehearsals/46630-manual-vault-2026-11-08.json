@@ -1,0 +1,39 @@
+{
+  "chainId": 46630,
+  "date": "2026-11-08",
+  "method": "manual, wallet-signed via /chain/console (MetaMask); every result re-checked on-chain via public RPC",
+  "vault": "0xe3B2eDD026e2cb2736743C8c4Db021E15298bc2d",
+  "asset": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+  "contractVersion": "pre-cap (package 3.1 not yet applied) — must be redeployed and re-run after 3.1",
+  "wallets": {
+    "A_owner": "0x1FBaDaFb2056Af662aa11732e86B28aF550af0d9",
+    "B_operator": "0x3D2FAC269954487a63F51bf059701FbD9647E3Bf",
+    "C_feeRecipient": "0x8b43AC0f705D18D2C42D12EB2fABe3e45e1045B1",
+    "D_investor": "0x141DB8c1C42B0fa5b13eE17136e4E037597886a8"
+  },
+  "happyPath": [
+    { "step": "B reportNav(0)", "tx": "0x3888d510d7be3a5add9c57e53ea63718392d368dc75ac61fe7e2fc61bc2408f0", "block": 150387503 },
+    { "step": "D approve(vault, 10 USDG)", "tx": "on the USDG contract; verified allowance = 10" },
+    { "step": "D deposit(10) → 9.8 shares, 0.2 fee to C", "tx": "0x3befcf3dd4f8424131510095e281de44eccd46bf52ab380422a14b7119f2d63a", "block": 150395247 },
+    { "step": "D requestWithdrawal(9.8)", "tx": "0x25bd089a4ee4ead275ca290874e195c1c1e39953c10920f652d2959ac3b0200a", "block": 150395729 },
+    { "step": "B markPositionsClosed(D)", "tx": "0xe7e48c2c28a29a61d2a729a5d2fe84e116cf8f6f128dc4484f89f8be9001fdfa", "block": 150396504 },
+    { "step": "B settleWithdrawal(D, 9.8) → 9.602 claimable, 0.198 fee to C", "tx": "0x08db14556f31e23ddebb97347a39d6945bd380bb2a86b2157a712124d33805fd", "block": 150397038 },
+    { "step": "D claim() → +9.602 USDG", "tx": "0xef096a6c21c1a4cb19ac4a61fdc5b77cb92e86419d99a316481a3be595784d52", "block": 150397382 }
+  ],
+  "happyPathBalances": { "D": "100 → 99.602", "C": "0 → 0.398", "vault": "0 → 0" },
+  "failureCases": [
+    { "case": "deposit 5 USDG", "expected": "BelowMinimum", "result": "rejected in simulation, no tx sent (console log)" },
+    { "case": "setup in-flight withdrawal", "txs": ["0x9c5564c7bbb3e2313b48fc939b26e4c8045826ac41e31b560626c2a1e10ead42 (deposit)", "0x78c8aa45eb0550422aa3282ef81464ff836a7bc39ae16cdf5042c66cc870e881 (request)"] },
+    { "case": "A pause(true,false)", "tx": "0x9e5a91c002b0bb38ce920090e76b2c74f9b9fab1979fff6be139f6e813694eba", "block": 150398645, "verified": "depositsPaused = true" },
+    { "case": "deposit while paused", "expected": "Paused_", "result": "rejected in simulation, no tx sent" },
+    { "case": "withdrawal completes while paused", "txs": [
+      "0x93224ac9a4ed91a0ce145781b6472265eff870fe7c7ab202c6192e5fc5a2234a (markPositionsClosed)",
+      "0xc491e81ce5ecaa5c21b5a787442805db6913d46c2da282e6b96bd8205de3b52f (settle)",
+      "0x5342086a4dbe43c4a5eb31eb57d79ffa60c70ff5bc3f41c060fc87acf88c4a8d (claim)"
+    ], "result": "pass — D 89.602 → 99.204 while depositsPaused = true" },
+    { "case": "A resume pause(false,false)", "tx": "0x3eda4e20608fe7c80378c86f06b26b832267495814b43c24a205f58321b31056", "block": 150399775, "verified": "depositsPaused = false" },
+    { "case": "deposit with NAV older than 6h", "expected": "StaleNav", "result": "PENDING — possible after ~23:00 WIB 2026-11-08" }
+  ],
+  "finalBalances": { "D": "99.204 USDG", "C": "0.796 USDG", "vault": "0 USDG, 0 shares", "conservation": "99.204 + 0.796 + 0 = 100" },
+  "notTested": ["closeOnly mode", "NavJumpTooLarge", "real trading / venue", "operator automation", "deposit cap (contract has none yet)"]
+}

@@ -196,6 +196,8 @@ export interface VaultState {
   operator: string;
   feeRecipient: string;
   blockNumber: number;
+  /** Exact on-chain integers (asset units), for amount maths without float error. */
+  raw: { reportedAssets: bigint; totalShares: bigint; depositFeeFlat: bigint; withdrawalFeeFlat: bigint };
 }
 
 export async function readVault(address: string = VAULT_ADDRESS ?? ""): Promise<VaultState> {
@@ -270,6 +272,7 @@ export async function readVault(address: string = VAULT_ADDRESS ?? ""): Promise<
     operator,
     feeRecipient,
     blockNumber: Number(BigInt(blockHex)),
+    raw: { reportedAssets, totalShares, depositFeeFlat, withdrawalFeeFlat },
   };
 }
 

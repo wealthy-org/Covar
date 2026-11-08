@@ -100,11 +100,16 @@ export function createRisk(opts: { dir: string; limits?: Partial<RiskLimits>; eq
       detail: `${intent.leverage}x requested · platform ceiling ${limits.maxLeverage}x`,
     });
 
+    const held = state.openPositions[intent.market] ?? 0;
+    const verifiedExit =
+      intent.reduceOnly && ((intent.side === "sell" && held > 0) || (intent.side === "buy" && held < 0)) && intent.qty <= Math.abs(held) + 1e-9;
     const maxNotional = (state.equity * limits.maxPositionPct) / 100 * Math.min(intent.leverage, limits.maxLeverage);
     checks.push({
       name: "position_size_cap",
-      ok: notional <= maxNotional,
-      detail: `notional ${round(notional, 2)} vs cap ${round(maxNotional, 2)} (${limits.maxPositionPct}% of equity at ${intent.leverage}x)`,
+      // A verified exit never adds exposure, and capping it could trap a position that
+      // grew past the cap. "Verified" = risk's own position book says it only reduces.
+      ok: verifiedExit || notional <= maxNotional,
+      detail: `notional ${round(notional, 2)} vs cap ${round(maxNotional, 2)} (${limits.maxPositionPct}% of equity at ${intent.leverage}x)${verifiedExit ? " · verified exit, not capped" : ""}`,
     });
 
     checks.push({

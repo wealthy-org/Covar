@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { VAULT_ADDRESS, explorerAddress } from "@/lib/chain";
 import { usd, pct } from "@/lib/format";
 import { cx } from "@/lib/format";
+import { useVaultFeed, VaultTotals } from "@/components/VaultActivity";
+import { chainLabel, usdg } from "@/lib/vaultAgent";
 
 const PERIODS = [
   {
@@ -45,7 +47,113 @@ const PERIODS = [
   },
 ];
 
+/** Fees actually recorded on-chain: USDG the deployed vault sent to its fee recipient (3.6). */
+function OnChainTreasury() {
+  const feed = useVaultFeed();
+  const s = feed.summary;
+  return (
+    <section className="rcard rcard-pad stack gap-14" data-testid="treasury-onchain">
+      <div className="row between wrap gap-8">
+        <h2 className="rcard-title">Recorded on-chain</h2>
+        <span className={cx("pill", feed.status === "ready" ? "pill-green" : "pill-amber")}>
+          {feed.status === "ready" ? "chain data" : feed.status === "off" ? "no vault configured" : feed.status === "loading" ? "reading…" : "unavailable"}
+        </span>
+      </div>
+      {feed.status === "ready" && s ? (
+        <>
+          <div className="joined-stats" style={{ ["--cols" as string]: 3 }}>
+            <div>
+              <span className="stat-label">Fees received</span>
+              <span className="js-v">{usdg(s.totals.feesToTreasury).toFixed(4)} USDG</span>
+              <span className="tiny">vault → fee recipient transfers</span>
+            </div>
+            <div>
+              <span className="stat-label">Vault assets</span>
+              <span className="js-v">{usdg(s.live.reportedAssets ?? s.reportedAssets).toFixed(2)} USDG</span>
+              <span className="tiny">investor money: a liability, not revenue</span>
+            </div>
+            <div>
+              <span className="stat-label">Withdrawals in progress</span>
+              <span className="js-v">{s.pendingWithdrawals.length}</span>
+              <span className="tiny">owed to investors once settled</span>
+            </div>
+          </div>
+          <VaultTotals s={s} compact />
+          <span className="tiny mono" style={{ wordBreak: "break-all" }}>
+            {chainLabel(s.chainId)} · fee recipient {s.live.feeRecipient ?? "unknown"} · indexed to block {s.lastBlock.toLocaleString("en-US")}
+          </span>
+        </>
+      ) : (
+        <span className="small">
+          {feed.status === "off"
+            ? "No vault address is configured for this site, so there are no recorded receipts to show."
+            : feed.status === "loading"
+              ? "Reading the vault's transfers…"
+              : `The indexer did not answer (${feed.error ?? "unknown"}). Recorded figures appear only when it does; nothing is estimated in the meantime.`}
+        </span>
+      )}
+    </section>
+  );
+}
+
+interface CreditStats {
+  ok: boolean;
+  soldUsd: number;
+  topups: number;
+  buyers: number;
+  consumedUsd: number;
+  calls: number;
+  providerCostUsd: number;
+  appFeeUsd: number;
+  outstandingUsd: number;
+  error?: string;
+}
+
+/** Copilot credits as recorded in the ledger (3.7): sold, consumed, provider pass-through, app fee, liability. */
+function CreditsTreasury() {
+  const [s, setS] = useState<CreditStats | null>(null);
+  useEffect(() => {
+    fetch("/api/credits/stats", { cache: "no-store" })
+      .then((r) => r.json())
+      .then(setS)
+      .catch((e) => setS({ ok: false, error: String(e) } as CreditStats));
+  }, []);
+  const f = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+  return (
+    <section className="rcard rcard-pad stack gap-12" data-testid="treasury-credits">
+      <div className="row between wrap gap-8">
+        <h2 className="rcard-title">Copilot credits · recorded</h2>
+        <span className={cx("pill", s?.ok ? "pill-green" : "pill-amber")}>{s ? (s.ok ? "ledger data" : "unavailable") : "reading…"}</span>
+      </div>
+      {s?.ok ? (
+        <div>
+          {(
+            [
+              ["Credits sold (USDG top-ups)", f(s.soldUsd), `${s.topups} top-up${s.topups === 1 ? "" : "s"} · ${s.buyers} wallet${s.buyers === 1 ? "" : "s"}`],
+              ["Credits consumed", f(s.consumedUsd), `${s.calls} model call${s.calls === 1 ? "" : "s"}`],
+              ["· provider cost (pass-through)", f(s.providerCostUsd), "owed to the AI provider: a cost, not revenue"],
+              ["· application fee (revenue)", f(s.appFeeUsd), "the only revenue part of credits"],
+              ["Unused credits (liability)", f(s.outstandingUsd), "prepaid by users, never counted as revenue"],
+            ] as const
+          ).map(([k, v, note]) => (
+            <div key={k} className="kv">
+              <span className="kv-k">
+                {k}
+                <span className="tiny" style={{ display: "block" }}>{note}</span>
+              </span>
+              <span className="kv-v mono-num">{v}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <span className="small">{s ? `The credits ledger is unavailable (${s.error ?? "error"}).` : "Reading the credits ledger…"}</span>
+      )}
+    </section>
+  );
+}
+
 export default function TreasuryPage() {
+  const feed = useVaultFeed();
   const [period, setPeriod] = useState(PERIODS[0]);
   const grossReceipts = period.depositFees + period.platformShare + period.aiAppFees;
   // Creator payouts come out of the gross creator fee (leaving the 20% platform share),
@@ -71,7 +179,7 @@ export default function TreasuryPage() {
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div className="row gap-10">
           <span className="label-dot">Treasury</span>
-          <span className="tagbox">illustrative</span>
+          <span className="tagbox">{feed.status === "ready" ? "on-chain + model" : "illustrative"}</span>
         </div>
         <h1 className="page-title-xl">
           Every fee, <span style={{ color: "var(--primary)" }}>accounted.</span>
@@ -80,6 +188,14 @@ export default function TreasuryPage() {
           Gross receipts, provider costs, creator payouts, platform share and outstanding obligations are separated. Deposits,
           trading collateral, escrowed withdrawals and unused credits are liabilities — they never appear as revenue.
         </p>
+      </div>
+
+      <OnChainTreasury />
+      <CreditsTreasury />
+
+      <div className="row gap-10 wrap" style={{ alignItems: "baseline" }}>
+        <h2 className="rcard-title">Accounting model</h2>
+        <span className="tagbox">illustrative figures · not recorded receipts</span>
       </div>
 
       <div className="seg" role="tablist" aria-label="Accounting period">
@@ -222,7 +338,7 @@ export default function TreasuryPage() {
             </div>
             <div className="kv">
               <span className="kv-k">Network</span>
-              <span className="kv-v">Robinhood Chain testnet · 46630</span>
+              <span className="kv-v">{feed.summary ? `${chainLabel(feed.summary.chainId)} · ${feed.summary.chainId}` : "Robinhood Chain testnet · 46630"}</span>
             </div>
             <div className="kv">
               <span className="kv-k">Admin</span>
@@ -250,9 +366,10 @@ export default function TreasuryPage() {
       </div>
 
       <p className="mono-note" style={{ maxWidth: 900 }}>
-        Reconciliation status: figures shown are an illustrative accounting model, not recorded receipts. No vault is deployed
-        on Robinhood Chain and no mainnet deployment exists; no buyback, burn or distribution has occurred. A decorative
-        treasury page would be worse than an honest empty one.
+        Reconciliation status: only the &ldquo;Recorded on-chain&rdquo; card is recorded data, read from the vault&apos;s USDG
+        transfers. The weekly periods below it are an illustrative accounting model (creator fees and AI credits are not yet
+        settled on-chain). No buyback, burn or distribution has occurred. A decorative treasury page would be worse than an
+        honest empty one.
       </p>
     </div>
   );

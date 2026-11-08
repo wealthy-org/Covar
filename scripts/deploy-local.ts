@@ -38,6 +38,8 @@ async function main() {
   await token.connect(investor).approve(vaultAddress, ethers.MaxUint256);
 
   // operator reports a first NAV, investor deposits, NAV moves up, withdrawal starts
+  // Local chain only: lift the v2 launch limits so the rehearsal can use 2,000 USDG. Testnet/mainnet keep the defaults.
+  await (await vault.setLimits(USDG(1_000_000), USDG(100_000))).wait();
   await (await vault.connect(operator).reportNav(USDG(0))).wait();
   await (await vault.connect(investor).deposit(USDG(2_000))).wait();
   await (await vault.connect(operator).reportNav(USDG(2_141.38))).wait(); // +8.2% on the deposited net

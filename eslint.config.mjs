@@ -27,7 +27,8 @@ const eslintConfig = [
       "coverage/**",
       "test-results/**",
       "playwright-report/**",
-      "hardhat/config.js"
+      "hardhat/config.js",
+      "services/venue/lighter/wasm_exec.cjs"
     ]
   }
 ];

@@ -10,6 +10,15 @@
 import type { Strategy } from "./types";
 import { buildStrategy, readPrompt, strategyFromIntent, type PromptIntent } from "./strategy";
 
+/** Token usage of one successful provider call (3.7 metering). */
+export interface ModelUsage {
+  provider: string;
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  providerCostUsd?: number;
+}
+
 export type CopilotProvider =
   | { kind: "none"; label: string; reason: string }
   | { kind: "anthropic"; label: string; model: string; apiKey: string; baseUrl: string }
@@ -135,7 +144,7 @@ export function sanitizeInterpretation(raw: unknown): ModelInterpretation | null
   };
 }
 
-async function callAnthropic(prompt: string, p: Extract<CopilotProvider, { kind: "anthropic" }>): Promise<string> {
+async function callAnthropic(prompt: string, p: Extract<CopilotProvider, { kind: "anthropic" }>, onUsage: (u: ModelUsage) => void): Promise<string> {
   const res = await fetch(`${p.baseUrl}/messages`, {
     method: "POST",
     signal: AbortSignal.timeout(12_000),
@@ -153,14 +162,15 @@ async function callAnthropic(prompt: string, p: Extract<CopilotProvider, { kind:
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`${p.label} → HTTP ${res.status}`);
-  const json = (await res.json()) as { content?: { type: string; text?: string }[] };
+  const json = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
+  if (json.usage) onUsage({ provider: p.label, model: p.model, tokensIn: json.usage.input_tokens ?? 0, tokensOut: json.usage.output_tokens ?? 0 });
   const text = json.content?.find((c) => c.type === "text")?.text;
   if (!text) throw new Error(`${p.label} returned an empty response`);
   return text;
 }
 
 /** Orbio and OpenAI speak the same chat-completions wire format. */
-async function callOpenAICompatible(prompt: string, p: Extract<CopilotProvider, { kind: "openai-compatible" }>): Promise<string> {
+async function callOpenAICompatible(prompt: string, p: Extract<CopilotProvider, { kind: "openai-compatible" }>, onUsage: (u: ModelUsage) => void): Promise<string> {
   const res = await fetch(`${p.baseUrl}/chat/completions`, {
     method: "POST",
     signal: AbortSignal.timeout(15_000),
@@ -179,7 +189,19 @@ async function callOpenAICompatible(prompt: string, p: Extract<CopilotProvider, 
     // 402 = balance/credits exhausted on Orbio: surfaced, then the rules parser answers.
     throw new Error(`${p.label} → HTTP ${res.status}${res.status === 402 ? " (AI credits exhausted)" : ""}`);
   }
-  const json = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
+  const json = (await res.json()) as {
+    choices?: { message?: { content?: string | null } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+  };
+  if (json.usage) {
+    onUsage({
+      provider: p.label,
+      model: p.model,
+      tokensIn: json.usage.prompt_tokens ?? 0,
+      tokensOut: json.usage.completion_tokens ?? 0,
+      ...(typeof json.usage.cost === "number" ? { providerCostUsd: json.usage.cost } : {}),
+    });
+  }
   const text = json.choices?.[0]?.message?.content;
   if (!text) throw new Error(`${p.label} returned an empty response`);
   return text;
@@ -194,22 +216,35 @@ function extractJson(text: string): unknown {
 export interface CopilotResponse {
   ok: boolean;
   /** Exactly which engine answered. The UI must show this. */
-  engine: "model" | "rules" | "rules-fallback";
+  engine: "model" | "rules" | "rules-fallback" | "rules-credits";
   providerLabel: string;
   strategy?: Strategy;
   unsupported: string[];
   questions: string[];
   note?: string;
+  /** Usage of the provider call, when one completed (billed even if its output was then rejected). */
+  usage?: ModelUsage;
+  /** Filled by the route when credits are enforced. */
+  credits?: { chargedUsd: number; balanceUsd: number; basis: string };
 }
 
 /** Interpret a first draft prompt. Never throws; provenance travels with the result. */
-export async function interpretDraft(prompt: string): Promise<CopilotResponse> {
+export async function interpretDraft(prompt: string, opts: { skipModel?: string } = {}): Promise<CopilotResponse> {
   const provider = copilotProvider();
 
+  if (provider.kind !== "none" && opts.skipModel) {
+    const { strategy, unsupported, questions } = buildStrategy(prompt);
+    return { ok: true, engine: "rules-credits", providerLabel: provider.label, strategy, unsupported, questions, note: opts.skipModel };
+  }
+
   if (provider.kind !== "none") {
+    let usage: ModelUsage | undefined;
+    const onUsage = (u: ModelUsage) => {
+      usage = u;
+    };
     try {
       const raw =
-        provider.kind === "anthropic" ? await callAnthropic(prompt, provider) : await callOpenAICompatible(prompt, provider);
+        provider.kind === "anthropic" ? await callAnthropic(prompt, provider, onUsage) : await callOpenAICompatible(prompt, provider, onUsage);
       const parsed = sanitizeInterpretation(extractJson(raw));
       if (!parsed) throw new Error("model response failed interpretation validation");
       const intent: PromptIntent = {
@@ -243,6 +278,7 @@ export async function interpretDraft(prompt: string): Promise<CopilotResponse> {
         strategy,
         unsupported,
         questions,
+        usage,
       };
     } catch (err) {
       const { strategy, unsupported, questions } = buildStrategy(prompt);
@@ -254,6 +290,7 @@ export async function interpretDraft(prompt: string): Promise<CopilotResponse> {
         unsupported,
         questions,
         note: `Model call failed (${(err as Error).message}); the deterministic rules parser produced this draft instead.`,
+        usage,
       };
     }
   }

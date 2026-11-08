@@ -5,11 +5,12 @@
  *   npm run services          # foreground, logs interleaved
  *   npm run demo:reconcile    # one-shot crash/restart proof in a temp dir
  */
+import "dotenv/config";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
 const STATE_DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
-const env = { ...process.env, COVAR_STATE_DIR: STATE_DIR };
+const env: Record<string, string | undefined> = { ...process.env, COVAR_STATE_DIR: STATE_DIR };
 
 const services = [
   { name: "exchange", port: 4011, entry: "services/exchange/main.ts" },
@@ -17,14 +18,26 @@ const services = [
   { name: "signer", port: 4013, entry: "services/signer/main.ts" },
   { name: "execution", port: 4010, entry: "services/execution/main.ts" },
 ];
+// The operator needs a vault to watch; without one it would refuse to start and,
+// because one exit stops the whole plane, take the others down with it.
+const hasVault = !!(process.env.OPERATOR_VAULT_ADDRESS || process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS);
+if (hasVault) {
+  services.push({ name: "operator", port: 4014, entry: "services/operator/main.ts" });
+  // 3.6: chain-log indexer behind Discover / agent record / treasury (/api/vault/summary)
+  services.push({ name: "indexer", port: Number(process.env.INDEXER_PORT ?? 4016), entry: "services/indexer/main.ts" });
+}
+if (!process.env.MONITOR_TARGETS) {
+  env.MONITOR_TARGETS = services.map((s) => `${s.name}=http://127.0.0.1:${s.port}`).join(",");
+}
+services.push({ name: "monitor", port: 4015, entry: "services/monitor/main.ts" });
 
 const children: ChildProcess[] = [];
 
-const colour: Record<string, string> = { execution: "\x1b[35m", risk: "\x1b[36m", exchange: "\x1b[33m", signer: "\x1b[32m" };
+const colour: Record<string, string> = { execution: "\x1b[35m", risk: "\x1b[36m", exchange: "\x1b[33m", signer: "\x1b[32m", operator: "\x1b[34m", indexer: "\x1b[90m", monitor: "\x1b[31m" };
 const reset = "\x1b[0m";
 
 console.log(`Covar execution plane · state dir ${STATE_DIR}`);
-console.log(`  exchange  :4011    risk  :4012    signer  :4013    execution  :4010`);
+console.log(`  ${services.map((s) => `${s.name} :${s.port}`).join("    ")}${hasVault ? "" : "    (operator off: no vault address set)"}`);
 
 for (const svc of services) {
   const child = spawn("npx", ["tsx", svc.entry], { env, cwd: process.cwd(), stdio: ["ignore", "pipe", "pipe"], detached: true });

@@ -97,14 +97,17 @@ async function main() {
   const file = path.join(process.cwd(), "deployments", `${chainId}.json`);
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
 
+  const limits = new ethers.Contract(address, ["function maxTotalAssets() view returns (uint256)", "function maxDepositPerTx() view returns (uint256)"], deployer);
   console.log(`\n  vault      ${address}`);
+  console.log(`  limits     TVL ${ethers.formatUnits(await limits.maxTotalAssets(), 6)} USDG · per deposit ${ethers.formatUnits(await limits.maxDepositPerTx(), 6)} USDG (owner: setLimits)`);
   console.log(`  tx         ${manifest.txHash}`);
   console.log(`  manifest   ${file}\n`);
   console.log("Next:");
   console.log(`  1. set NEXT_PUBLIC_COVAR_VAULT_ADDRESS=${address} and NEXT_PUBLIC_CHAIN_ENV=${chainId === 4663 ? "mainnet" : "testnet"}`);
   console.log("  2. report the first NAV from the operator wallet, then test a 10 USDG deposit");
   console.log(`  3. verify the source: pnpm verify:${chainId === 4663 ? "mainnet" : "testnet"}`);
-  console.log("  4. remove DEPLOYER_KEY (and CONFIRM_MAINNET) from .env — see docs/GO_LIVE_RUNBOOK.md\n");
+  console.log("  4. owner sets the trading account (venue deposit address) in /chain/console before any allocation");
+  console.log("  5. remove DEPLOYER_KEY (and CONFIRM_MAINNET) from .env — see docs/GO_LIVE_RUNBOOK.md\n");
 }
 
 main().catch((e) => {

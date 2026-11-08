@@ -62,7 +62,7 @@ live contract state instead.
 | API route | What it is |
 |---|---|
 | `/api/prices` | Server-side market data: Hyperliquid perp mids → Coinbase spot fallback; outages reported, never hidden |
-| `/api/copilot` | Copilot interpreter: a model (when `ANTHROPIC_API_KEY` is set) may propose a bounded interpretation, the deterministic engine encodes it; response is labelled `model` / `rules` / `rules-fallback` |
+| `/api/copilot` | Copilot interpreter: a model (when `AI_PROVIDER_API_KEY` is set — Orbio, Anthropic or OpenAI) may propose a bounded interpretation, the deterministic engine encodes it; response is labelled `model` / `rules` / `rules-fallback` |
 | `/api/execution` | Proxy of the execution plane status |
 
 

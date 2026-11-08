@@ -7,7 +7,14 @@ Dokumen ini menjawab dua pertanyaan secara eksplisit:
 1. **Apa yang harus dilakukan supaya semua fitur berjalan** — lokal penuh maupun di deployment (Vercel + hosting services).
 2. **Apakah semua fitur brief sudah ada** — pemetaan satu per satu terhadap matrix §7, acceptance §15, dan delivery sequence §14, dengan bukti.
 
-Tanggal penjabaran: 6 Nov 2026. Acuan repo: `github.com/wealthy-org/Covar` @ commit terbaru (`4b619e0`).
+Tanggal penjabaran: 6 Nov 2026 · **diperbarui 8 Nov 2026** setelah paket 3.1–3.7 + 3.10 (`4296369` … `46c3378`). Acuan repo: `github.com/wealthy-org/Covar`.
+
+> **Pembaruan 8 Nov 2026, ringkas:** kontrak v2 (cap TVL/deposit, trading account), operator otomatis,
+> adapter Lighter live, monitor + alert Telegram, login SIWE + DB multi-user (SQLite/Postgres), transaksi
+> investor dari halaman biasa, Discover/record/treasury dari indexer on-chain, dan kredit Copilot nyata
+> (top-up USDG + metering token) sudah dibangun dan **lolos test lokal** (lihat tabel test di runbook Fase 3).
+> Semua masih harus dibuktikan di **testnet** dengan vault v2 yang di-deploy ulang. Belum: `rehearse:testnet` (3.8),
+> token/staking (3.9, pending), "Connect Orbio" per pengguna (menunggu akses partner Orbio).
 
 ---
 
@@ -30,8 +37,8 @@ Tanggal penjabaran: 6 Nov 2026. Acuan repo: `github.com/wealthy-org/Covar` @ com
 | B — UI & builder | shell + tokens, drafts, editor/chat, validasi | ✅ selesai | 16 route, `design tokens cobalt`, suite builder |
 | C — Testing & practice | backtest reproducible, practice harga live, record berlabel | ✅ selesai | seeded backtest, `/api/prices` Hyperliquid/Coinbase, label priceMode |
 | D — Exchange & risk | test trading, signer terisolasi, rekonsiliasi order, limit independen | ✅ selesai (venue=paper) | 5 services, 39+20+19 check lolos, crash-test nyata |
-| E — Vault / investor | kontrak, valuasi, funding, withdraw, fee, emergency | 🟡 **lokal selesai, testnet menunggu input** | `CovarVault.sol` 18 test + rehearsal E2E 19/19 di chain lokal 31337 |
-| F — Full suite | discovery, records, Copilot, lifecycle, token/ekonomi, treasury, alerts | 🟡 sebagian | discovery/records/Copilot lifecycle ✅; token/staking/burn sengaja belum (diberi label) |
+| E — Vault / investor | kontrak, valuasi, funding, withdraw, fee, emergency | 🟡 **v2 lokal selesai; v1 sudah diuji manual di testnet; v2 perlu deploy ulang + uji testnet** | `CovarVault.sol` v2 25 test, rehearsal 22/22, E2E browser on-chain 4/4, operator 95 |
+| F — Full suite | discovery, records, Copilot, lifecycle, token/ekonomi, treasury, alerts | 🟡 hampir lengkap | discovery/records/treasury dari indexer ✅, kredit Copilot nyata ✅, alert Telegram ✅; token/staking/burn sengaja belum (diberi label) |
 | G — Release evidence | findings, demo acceptance, manifest, runbooks | ⏳ setelah E-testnet | `docs/rehearsals/*.json` sudah jadi template |
 
 ---
@@ -45,21 +52,21 @@ Legend: ✅ bekerja dan punya bukti test · 🟡 permukaan ada, substansi sebagi
 | 1 | Strategy builder | ✅ | NL→typed rules (parser deterministik + Copilot bounded), visual editor, code view, diff tervalidasi, draft persisten (DB + localStorage). Test engine 25/25. |
 | 2 | Historical testing | ✅ | Replay deterministik ber-seed, indikator EMA/RSI/ATR/Bollinger/volume, asumsi fee+slippage+funding eksplisit, chart + daftar trade + laporan reproducible. |
 | 3 | Practice | ✅ | Harga live (Hyperliquid mid → fallback Coinbase spot), uang simulasi, start/stop eksplisit, ledger terisolasi, label `live`/`simulated` jelas. |
-| 4 | Test-money trading | 🟡 | Arsitektur + adapter seam + journal siap; venue nyata (Lighter testnet) **menunggu adapter live yang direview** — saat ini venue paper deterministic di proses sendiri. Tidak pernah dicampur dengan practice/mainnet. |
-| 5 | Live trading | 🟡 | Provisioning/order/fill/rekonsiliasi sudah diuji ujung-ke-ujung di rehearsal lokal; live venue sama seperti #4. |
-| 6 | AI Copilot | 🟡 | Seam provider (`AI_PROVIDER_API_KEY`), interpretasi terbatas → engine deterministik, fallback berlabel (`rules-fallback`), kredit + rules-only twin. Belum: tools konteks (news/X/on-chain), pembelian kredit uang sungguhan. |
+| 4 | Test-money trading | 🟡 | Adapter **Lighter live** sudah dibangun (`VENUE_ADAPTER=live`, signer WASM resmi, IOC idempotent; test 44 + wire check ke API Lighter RH testnet). Perlu API key Lighter RH testnet untuk uji order sungguhan. Lighter RH testnet **bukan** chain 46630, jadi akun test-money didanai terpisah dari vault. |
+| 5 | Live trading | 🟡 | Sama dengan #4, ditambah operator yang memakai equity akun Lighter sebagai NAV. Alur dana vault → Lighter (wallet B) → vault hanya bisa diuji penuh di mainnet 4663 (nilai kecil); risiko kustodi di B tercatat di `services/operator/README.md`. |
+| 6 | AI Copilot | 🟡 | Provider Orbio/Anthropic/OpenAI, interpretasi terbatas → engine deterministik, fallback berlabel, **dipotong dari kredit nyata** saat `CREDITS_MODE=enforce`. Belum: tools konteks (news/X/on-chain). |
 | 7 | Risk engine | ✅ | Proses independen; cek setiap order (7 check): allowlist market, leverage ≤5×, posisi ≤40%, pause harian 10%, stop drawdown 25%, force-close-only, persetujuan Copilot **tidak bisa** menaikkan batas. Service test 39/39. |
 | 8 | Strategy lifecycle | ✅ | Versi, history, diff, publikasi butuh backtest + acknowledgement, notice investor 48h, practice side-by-side twin. |
-| 9 | Discovery | 🟡 | Ranking/sort (score, return, TVL, drawdown, usia, creator, status) + kolom provenance. Data agen saat ini seeded-demo — sudah berlabel; memindahkan ke data indexer on-chain adalah wiring tersisa. |
+| 9 | Discovery | ✅/🟡 | Vault yang benar-benar di-deploy tampil paling atas dengan tag **on-chain**; TVL, return dari harga share, drawdown, usia, dan jumlah investor dibaca dari indexer (event + transfer USDG). Agen lain masih seeded-demo dan berlabel. |
 | 10 | Agent detail | ✅ | Performance, decision log, ringkasan aktivitas, rules public/private, versi, risk, dan tab vault. |
-| 11 | Vaults | 🟡 | Kontrak: deposit/valuasi/share/withdraw-request/settle/claim/fee/emergency/pause — 18 test lolos + UI membaca state kontrak saat address diset. Belum: deploy 46630 (lihat §F). |
+| 11 | Vaults | 🟡 | Kontrak v2 (cap TVL 1.000 / deposit 100 USDG, trading account, likuiditas) 25 test; investor deposit/withdraw/claim dari panel **Invest · on-chain**; riwayat event + link tx di halaman vault. v1 sudah diuji manual di 46630; **v2 perlu deploy ulang**. |
 | 12 | Creator economics | 🟡 | Fee 1% + 0.10 USDG, ≤20% dari profit trade menang, split 80/20, kalkulator, treasury. Settlement on-chain menunggu deploy. |
-| 13 | AI credits | 🟡 | Estimasi/reservasi/rekonsiliasi pemakaian + top-up (simulasi). Integrasi Orbio: diputuskan memakai dependency kompatibel (provider LLM via `AI_PROVIDER_API_KEY`); billing sungguhan menunggu akun owner. |
+| 13 | AI credits | ✅/🟡 | Ledger kredit di DB per wallet: top-up = transfer USDG yang diverifikasi server dari receipt (sekali per transfer); tiap panggilan model dipotong token × harga + fee aplikasi; treasury menampilkan kredit terjual, terpakai, biaya provider, fee, dan liabilitas. Test 41 (SQLite + Postgres) + E2E top-up. Belum: "Connect Orbio" per pengguna. |
 | 14 | Token features | ❌ (berlabel) | Bar pengumuman "not deployed yet", halaman ekonomi menjelaskan tanpa mengilustrasikan. Sesuai brief §7/§15: halaman dekoratif ≠ fitur. |
-| 15 | Treasury/staking | 🟡/❌ | Akunting fee nyata ✅; buyback/burn = nol dan ditulis eksplisit (tidak dibuat-buat); staking ❌ labelled coming-soon. |
+| 15 | Treasury/staking | 🟡/❌ | Kartu **Recorded on-chain** (fee = transfer USDG vault → penerima fee, persis) dan **Copilot credits · recorded**; model periode mingguan tetap berlabel ilustratif; buyback/burn = nol; staking ❌ labelled coming-soon. |
 | 16 | Notifications | ✅ | Inbox in-app: practice start/stop, publish, deposit, request/claim, credit top-up, risk — hanya dari transisi state nyata; badge unread. Channel email/push ❌ (tidak diklaim). |
 | 17 | Documentation | ✅ | `/docs`, README, TESTING.md, PARITY_REGISTER, FEATURE_STATUS, rehearsal report, runbook CI. |
-| 18 | Application storage | ✅ | Prisma + SQLite dev (Postgres-ready), snapshot sesi + tabel queryable (notifications, ledger, practice runs, strategy versions), roundtrip terverifikasi; services sengaja **tidak** pakai DB ini (journal mereka sumber kebenaran order). |
+| 18 | Application storage | ✅ | Prisma: SQLite (dev) dan **PostgreSQL** (`pnpm db:pg:*`), user = wallet via SIWE, state per wallet, ledger kredit. Test auth 30 dan credits 41 di kedua database. Services sengaja **tidak** pakai DB ini (journal mereka sumber kebenaran order). |
 
 ### Acceptance criteria (§15) — ringkas
 

@@ -8,13 +8,15 @@ import { actions, useCovar } from "@/lib/store";
 import { pct, pctSigned, usd } from "@/lib/format";
 import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
 import { WalletGate } from "@/components/WalletGate";
+import { useCredits } from "@/lib/creditsClient";
 import { priceFor, sourceLabel, usePrices } from "@/lib/usePrices";
 
 function StudioInner() {
   const params = useSearchParams();
   const router = useRouter();
-  const { agents, drafts, practice, portfolio } = useCovar();
+  const { agents, drafts, practice } = useCovar();
   const { toast, node } = useToast();
+  const credits = useCredits();
   const isNew = params.get("new") === "1";
 
   const mine = agents.filter((a) => a.isMine);
@@ -75,10 +77,10 @@ function StudioInner() {
         </div>
         <div className="card card-pad">
           <span className="tiny">Copilot credits</span>
-          <div className="stat-value">{usd(portfolio.creditUsd)}</div>
-          <button className="btn btn-soft btn-sm" style={{ marginTop: 6 }} onClick={() => { actions.addCredits(10); toast("Added $10.00 of Copilot credits"); }}>
-            Top up $10
-          </button>
+          <div className="stat-value">{credits.balanceUsd === null ? "—" : usd(credits.balanceUsd)}</div>
+          <Link className="btn btn-soft btn-sm" style={{ marginTop: 6 }} href="/portfolio#credits">
+            {credits.signedIn ? "Top up" : "Sign in to use"}
+          </Link>
         </div>
       </div>
 

@@ -164,12 +164,14 @@ async function main() {
     path.join(ROOT, "deployments", "31337-e2e.json"),
     JSON.stringify({ chainId: 31337, contract: "CovarVault", address: vaultAddress, asset: tokenAddress }, null, 2)
   );
-  start("indexer", { INDEXER_VAULT_ADDRESS: vaultAddress });
+  start("indexer", { INDEXER_VAULT_ADDRESS: vaultAddress, INDEXER_RPC_URL: "http://127.0.0.1:8545" });
   await waitHealth("indexer");
   check("indexer healthy and pointed at the fresh vault", true, vaultAddress);
 
   /* ------------------------------- 3 · deposit ----------------------------- */
   console.log("\n3. investor deposits 2,000 USDG (real transaction)");
+  // Local chain only: lift the v2 launch limits so the rehearsal can use 2,000 USDG. Testnet/mainnet keep the defaults.
+  await (await vault.setLimits(USDG(1_000_000), USDG(100_000))).wait();
   await (await vault.connect(operator).reportNav(USDG(0))).wait();
   const depositTx = await vault.connect(investor).deposit(USDG(2_000));
   const depositRc = await depositTx.wait();
@@ -266,6 +268,19 @@ async function main() {
     check(`indexer saw ${ev} (from chain logs)`, seen);
   }
 
+  // 3.6: the summary Discover/treasury read must match the chain exactly
+  type Summary = { ok: boolean; totals: { feesToTreasury: string; depositFees: string; claimed: string }; counts: { deposits: number; claims: number; navReports: number }; investors: { total: number }; navSeries: unknown[]; live: { navPerShare: number | null } };
+  const feeBal = await token.balanceOf(feeRecipient.address);
+  let summary: Summary | null = null;
+  await waitFor(async () => {
+    summary = await json<Summary>("indexer", "/summary");
+    return summary.ok && BigInt(summary.totals.feesToTreasury) === feeBal;
+  }, 15_000, "summary fees");
+  const sm = summary as Summary | null;
+  check("indexer summary: treasury fees == fee recipient USDG balance", !!sm && BigInt(sm.totals.feesToTreasury) === feeBal, `${sm?.totals.feesToTreasury} vs ${feeBal}`);
+  check("indexer summary: counts and investor from chain logs", !!sm && sm.counts.deposits >= 1 && sm.counts.claims === 1 && sm.investors.total === 1 && sm.navSeries.length === sm.counts.navReports, sm?.counts);
+  check("indexer summary: live NAV/share read from the contract", !!sm && sm.live.navPerShare !== null, sm?.live);
+
   /* ------------------------------- 8 · crash ------------------------------- */
   console.log("\n8. crash-recovery on the same rehearsal ring (the venue adapter seam keeps this honest end-to-end)");
   try {
@@ -326,7 +341,7 @@ async function main() {
         vault: vaultAddress,
         asset: tokenAddress,
         labels: {
-          venue: "paper venue (simulated fills) — a live venue adapter refuses all calls until reviewed",
+          venue: "paper venue (simulated fills) — the live Lighter adapter is selected only with VENUE_ADAPTER=live + LIVE_TRADING_CONFIRM=yes",
           chain: "local hardhat EVM — not Robinhood Chain",
           tokens: "MockUSDG — must never leave the sandbox",
         },

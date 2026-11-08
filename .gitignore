@@ -12,6 +12,8 @@ playwright-report/
 # secrets — never committed; keys selalu lewat environment
 .env
 .env.*
+# the template has no secrets and fresh clones need it (postinstall copies it to .env)
+!.env.example
 *.key
 *.pem
 
