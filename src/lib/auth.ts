@@ -19,7 +19,7 @@ import { buildSiweMessage, parseSiweMessage, SIWE_STATEMENT } from "./siwe";
 
 export const SESSION_COOKIE = "covar_session";
 const NONCE_TTL_MS = 10 * 60_000;
-const SESSION_TTL_MS = Number(process.env.SESSION_TTL_HOURS ?? 24 * 7) * 3600_000;
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_HOURS || 24 * 7) * 3600_000;
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export class AuthError extends Error {
@@ -52,7 +52,7 @@ export function sameOrigin(req: Request): boolean {
 }
 
 export function allowedChainIds(): number[] {
-  const ids = [Number(process.env.NEXT_PUBLIC_RH_TESTNET_CHAIN_ID ?? 46630), Number(process.env.NEXT_PUBLIC_RH_MAINNET_CHAIN_ID ?? 4663)];
+  const ids = [Number(process.env.NEXT_PUBLIC_RH_TESTNET_CHAIN_ID || 46630), Number(process.env.NEXT_PUBLIC_RH_MAINNET_CHAIN_ID || 4663)];
   if (process.env.NODE_ENV !== "production" || process.env.ALLOW_LOCAL_CHAIN === "yes") ids.push(31337);
   return ids;
 }
@@ -69,7 +69,9 @@ function cookieValue(req: Request, name: string): string | null {
 
 export function sessionCookie(token: string, req: Request, maxAgeSec: number): string {
   const { secure } = requestOrigin(req);
-  const sameSite = process.env.SESSION_COOKIE_SAMESITE ?? "Lax";
+  // Only the three valid values; anything else (empty, typo) → Lax.
+  const raw = (process.env.SESSION_COOKIE_SAMESITE || "").trim().toLowerCase();
+  const sameSite = raw === "strict" ? "Strict" : raw === "none" ? "None" : "Lax";
   return [`${SESSION_COOKIE}=${encodeURIComponent(token)}`, "Path=/", "HttpOnly", `SameSite=${sameSite}`, `Max-Age=${maxAgeSec}`, secure || sameSite === "None" ? "Secure" : ""]
     .filter(Boolean)
     .join("; ");
@@ -185,6 +187,6 @@ export async function logout(req: Request) {
 export async function stateOwner(req: Request): Promise<string | null> {
   const u = await currentUser(req);
   if (u) return u.address;
-  const anon = process.env.STATE_ANON_MODE ?? (process.env.NODE_ENV === "production" ? "off" : "local");
+  const anon = process.env.STATE_ANON_MODE || (process.env.NODE_ENV === "production" ? "off" : "local");
   return anon === "local" ? "local" : null;
 }

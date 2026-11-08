@@ -16,8 +16,8 @@ export const CHAINS = {
     name: "Robinhood Chain Testnet",
     // Acuan key names first (NEXT_PUBLIC_RH_*_RPC_URL), legacy fallback kept.
     rpc:
-      process.env.NEXT_PUBLIC_RH_TESTNET_RPC_URL ??
-      process.env.NEXT_PUBLIC_RH_TESTNET_RPC ??
+      process.env.NEXT_PUBLIC_RH_TESTNET_RPC_URL ||
+      process.env.NEXT_PUBLIC_RH_TESTNET_RPC ||
       "https://rpc.testnet.chain.robinhood.com",
     explorer: "https://explorer.testnet.chain.robinhood.com",
     gasToken: "testnet ETH",
@@ -26,8 +26,8 @@ export const CHAINS = {
   4663: {
     name: "Robinhood Chain",
     rpc:
-      process.env.NEXT_PUBLIC_RH_MAINNET_RPC_URL ??
-      process.env.NEXT_PUBLIC_RH_MAINNET_RPC ??
+      process.env.NEXT_PUBLIC_RH_MAINNET_RPC_URL ||
+      process.env.NEXT_PUBLIC_RH_MAINNET_RPC ||
       "https://rpc.mainnet.chain.robinhood.com",
     explorer: "https://robinhoodchain.blockscout.com",
     gasToken: "ETH",
@@ -36,7 +36,7 @@ export const CHAINS = {
   // local rehearsal node (hardhat) — never a production target
   31337: {
     name: "Local rehearsal",
-    rpc: process.env.NEXT_PUBLIC_LOCAL_RPC ?? "http://127.0.0.1:8545",
+    rpc: process.env.NEXT_PUBLIC_LOCAL_RPC || "http://127.0.0.1:8545",
     explorer: "http://127.0.0.1:8545",
     gasToken: "local ETH",
     isMainnet: false,
@@ -47,18 +47,18 @@ export type ChainId = keyof typeof CHAINS;
 
 // Acuan key names first (NEXT_PUBLIC_RH_*_CHAIN_ID / NEXT_PUBLIC_CHAIN_ENV),
 // legacy NEXT_PUBLIC_RH_CHAIN_ID still honoured.
-const chainEnv = (process.env.NEXT_PUBLIC_CHAIN_ENV ?? "").toLowerCase();
+const chainEnv = (process.env.NEXT_PUBLIC_CHAIN_ENV || "").toLowerCase();
 const defaultChain =
   chainEnv === "mainnet"
-    ? Number(process.env.NEXT_PUBLIC_RH_MAINNET_CHAIN_ID ?? 4663)
-    : Number(process.env.NEXT_PUBLIC_RH_TESTNET_CHAIN_ID ?? 46630);
+    ? Number(process.env.NEXT_PUBLIC_RH_MAINNET_CHAIN_ID || 4663)
+    : Number(process.env.NEXT_PUBLIC_RH_TESTNET_CHAIN_ID || 46630);
 
 export const EXPECTED_CHAIN_ID: ChainId =
   (Number(
-    process.env.NEXT_PUBLIC_RH_CHAIN_ID ?? defaultChain
+    process.env.NEXT_PUBLIC_RH_CHAIN_ID || defaultChain
   ) as ChainId) || defaultChain || 46630;
 
-export const VAULT_ADDRESS: string | null = process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS ?? null;
+export const VAULT_ADDRESS: string | null = process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS || null;
 
 export const rpcUrl = (chain: ChainId = EXPECTED_CHAIN_ID) => CHAINS[chain].rpc;
 export const explorerAddress = (address: string, chain: ChainId = EXPECTED_CHAIN_ID) =>
@@ -91,14 +91,26 @@ const SEL = {
 let rpcId = 0;
 
 async function rpc<T>(method: string, params: unknown[], chain: ChainId = EXPECTED_CHAIN_ID): Promise<T> {
-  const res = await fetch(rpcUrl(chain), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`RPC ${method} failed: HTTP ${res.status}`);
-  const json = (await res.json()) as { result?: T; error?: { message: string } };
+  // hard timeout: a hung RPC must surface as an error the UI can retry, never "…" forever
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 15_000);
+  let json: { result?: T; error?: { message: string } };
+  try {
+    const res = await fetch(rpcUrl(chain), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
+      cache: "no-store",
+      signal: ctl.signal,
+    });
+    if (!res.ok) throw new Error(`RPC ${method} failed: HTTP ${res.status}`);
+    json = (await res.json()) as { result?: T; error?: { message: string } };
+  } catch (e) {
+    if (ctl.signal.aborted) throw new Error(`RPC ${method} timed out after 15s (${rpcUrl(chain)})`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (json.error) throw new Error(json.error.message);
   return json.result as T;
 }

@@ -3,10 +3,10 @@ import { createRisk } from "./app";
 import { serve } from "../shared/http";
 import type { OrderIntent } from "../shared/types";
 
-const PORT = Number(process.env.RISK_PORT ?? 4012);
-const DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
+const PORT = Number(process.env.RISK_PORT || 4012);
+const DIR = process.env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
 
-const risk = createRisk({ dir: DIR, equity: Number(process.env.RISK_START_EQUITY ?? 10_000) });
+const risk = createRisk({ dir: DIR, equity: Number(process.env.RISK_START_EQUITY || 10_000) });
 
 serve("risk", PORT, [
   { method: "POST", path: "/evaluate", handler: ({ body }) => ({ body: { decision: risk.evaluate(body.intent as OrderIntent) } }) },

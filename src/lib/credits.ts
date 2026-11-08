@@ -146,12 +146,12 @@ export interface TopupConfig {
 }
 
 export function topupConfig(): TopupConfig {
-  const chainId = Number(process.env.CREDITS_CHAIN_ID ?? EXPECTED_CHAIN_ID);
+  const chainId = Number(process.env.CREDITS_CHAIN_ID || EXPECTED_CHAIN_ID);
   const known = CHAINS[chainId as ChainId];
   const addr = (v?: string) => (v && /^0x[0-9a-fA-F]{40}$/.test(v.trim()) ? v.trim() : null);
   return {
     chainId,
-    rpc: process.env.CREDITS_RPC_URL ?? known?.rpc ?? "",
+    rpc: process.env.CREDITS_RPC_URL || known?.rpc || "",
     usdg: addr(process.env.CREDITS_USDG_ADDRESS) ?? USDG_BY_CHAIN[chainId] ?? null,
     treasury: addr(process.env.CREDITS_TREASURY_ADDRESS),
     minTopupUsd: num("CREDITS_MIN_TOPUP_USD", 1),

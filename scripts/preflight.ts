@@ -12,17 +12,17 @@ import { ethers } from "ethers";
 const NETWORKS: Record<string, { chainId: number; usdg: string; weth: string; rpc: string }> = {
   robinhoodTestnet: {
     chainId: 46630,
-    rpc: process.env.RH_TESTNET_RPC ?? "https://rpc.testnet.chain.robinhood.com",
+    rpc: process.env.RH_TESTNET_RPC || "https://rpc.testnet.chain.robinhood.com",
     // The brief's token table resolves on MAINNET only (no bytecode on 46630).
     // Testnet USDG as published by Paxos (docs.paxos.com/guides/stablecoin/usdg/testnet).
-    usdg: process.env.USDG_ADDRESS ?? "0x7E955252E15c84f5768B83c41a71F9eba181802F",
-    weth: process.env.WETH_ADDRESS ?? "",
+    usdg: process.env.USDG_ADDRESS || "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+    weth: process.env.WETH_ADDRESS || "",
   },
   robinhoodMainnet: {
     chainId: 4663,
-    rpc: process.env.RH_MAINNET_RPC ?? "https://rpc.mainnet.chain.robinhood.com",
-    usdg: process.env.USDG_ADDRESS ?? "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
-    weth: process.env.WETH_ADDRESS ?? "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
+    rpc: process.env.RH_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com",
+    usdg: process.env.USDG_ADDRESS || "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    weth: process.env.WETH_ADDRESS || "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73",
   },
 };
 
@@ -41,7 +41,7 @@ const record = (check: string, ok: boolean, detail: string, fatal = true) => {
 };
 
 async function main() {
-  const networkName = process.env.HARDHAT_NETWORK ?? "robinhoodTestnet";
+  const networkName = process.env.HARDHAT_NETWORK || "robinhoodTestnet";
   const cfg = NETWORKS[networkName];
   if (!cfg) throw new Error(`Unknown network ${networkName}; use robinhoodTestnet or robinhoodMainnet`);
 

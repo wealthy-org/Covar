@@ -45,12 +45,12 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     robinhoodTestnet: {
-      url: process.env.RH_TESTNET_RPC ?? "https://rpc.testnet.chain.robinhood.com",
+      url: process.env.RH_TESTNET_RPC || "https://rpc.testnet.chain.robinhood.com",
       chainId: 46630,
       accounts: DEPLOYER_KEY ? [DEPLOYER_KEY] : [],
     },
     robinhoodMainnet: {
-      url: process.env.RH_MAINNET_RPC ?? "https://rpc.mainnet.chain.robinhood.com",
+      url: process.env.RH_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com",
       chainId: 4663,
       accounts: DEPLOYER_KEY ? [DEPLOYER_KEY] : [],
     },

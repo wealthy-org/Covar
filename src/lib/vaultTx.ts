@@ -119,6 +119,36 @@ const word = (hex: string, i: number) => {
 const wordAddress = (hex: string, i: number) => "0x" + strip(hex).slice(i * 64 + 24, i * 64 + 64);
 
 // --------------------------------------------------------------------- reads
+/** A read must never hang the UI: wallets can sit on a request (locked, busy, just reloaded). */
+export const WALLET_READ_TIMEOUT_MS = 5_000;
+export const RPC_TIMEOUT_MS = 15_000;
+
+export function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error(`${what} timed out after ${Math.round(ms / 1000)}s`), { code: "TIMEOUT" })), ms);
+    p.then(
+      (v) => (clearTimeout(t), resolve(v)),
+      (e) => (clearTimeout(t), reject(e))
+    );
+  });
+}
+
+/** POST a JSON-RPC body with a hard timeout; a hung RPC becomes a normal, retryable error. */
+export async function rpcFetch(url: string, body: unknown, what: string): Promise<{ result?: unknown; error?: { message: string; data?: unknown } }> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), RPC_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), cache: "no-store", signal: ctl.signal });
+    if (!res.ok) throw new Error(`RPC ${what} failed: HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    if (ctl.signal.aborted) throw Object.assign(new Error(`RPC ${what} timed out after ${RPC_TIMEOUT_MS / 1000}s (${url})`), { code: "TIMEOUT" });
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /**
  * eth_call through the wallet when connected (its RPC already works for the
  * user, VPN or not), else through the public RPC of the expected chain.
@@ -128,20 +158,14 @@ export async function ethCall(to: string, data: string, chain: ChainId, from?: s
   const params = [{ to, data, ...(from ? { from } : {}) }, "latest"];
   if (eth) {
     try {
-      const walletChain = Number(BigInt(await eth.request({ method: "eth_chainId" })));
-      if (walletChain === chain) return await eth.request({ method: "eth_call", params });
+      const walletChain = Number(BigInt(await withTimeout(eth.request({ method: "eth_chainId" }), WALLET_READ_TIMEOUT_MS, "wallet eth_chainId")));
+      if (walletChain === chain) return await withTimeout(eth.request({ method: "eth_call", params }), WALLET_READ_TIMEOUT_MS, "wallet eth_call");
     } catch (e) {
       // a revert from the wallet's RPC must surface, not silently fall back
       if (revertData(e)) throw e;
     }
   }
-  const res = await fetch(CHAINS[chain].rpc, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method: "eth_call", params }),
-    cache: "no-store",
-  });
-  const json = await res.json();
+  const json = await rpcFetch(CHAINS[chain].rpc, { jsonrpc: "2.0", id: Date.now(), method: "eth_call", params }, "eth_call");
   if (json.error) throw Object.assign(new Error(json.error.message), { data: json.error.data });
   return json.result as string;
 }
@@ -326,7 +350,7 @@ export async function waitForReceipt(hash: string, timeoutMs = 120_000): Promise
   const eth = injected();
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    const r = eth ? await eth.request({ method: "eth_getTransactionReceipt", params: [hash] }).catch(() => null) : null;
+    const r = eth ? await withTimeout(eth.request({ method: "eth_getTransactionReceipt", params: [hash] }), WALLET_READ_TIMEOUT_MS, "wallet receipt").catch(() => null) : null;
     if (r) return { ok: r.status === "0x1", blockNumber: Number(BigInt(r.blockNumber)) };
     await new Promise((res) => setTimeout(res, 1500));
   }

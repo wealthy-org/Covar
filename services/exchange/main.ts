@@ -2,13 +2,13 @@ import path from "node:path";
 import { createExchange } from "./app";
 import { serve } from "../shared/http";
 
-const PORT = Number(process.env.EXCHANGE_PORT ?? 4011);
-const DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
+const PORT = Number(process.env.EXCHANGE_PORT || 4011);
+const DIR = process.env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
 
 const exchange = createExchange({
   dir: DIR,
-  fillDelayPolls: Number(process.env.EXCHANGE_FILL_DELAY ?? 2),
-  slippageBps: Number(process.env.EXCHANGE_SLIPPAGE_BPS ?? 4),
+  fillDelayPolls: Number(process.env.EXCHANGE_FILL_DELAY || 2),
+  slippageBps: Number(process.env.EXCHANGE_SLIPPAGE_BPS || 4),
 });
 
 serve("exchange", PORT, [

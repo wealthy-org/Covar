@@ -9,7 +9,7 @@ import "dotenv/config";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
-const STATE_DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
+const STATE_DIR = process.env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
 const env: Record<string, string | undefined> = { ...process.env, COVAR_STATE_DIR: STATE_DIR };
 
 const services = [
@@ -24,7 +24,7 @@ const hasVault = !!(process.env.OPERATOR_VAULT_ADDRESS || process.env.NEXT_PUBLI
 if (hasVault) {
   services.push({ name: "operator", port: 4014, entry: "services/operator/main.ts" });
   // 3.6: chain-log indexer behind Discover / agent record / treasury (/api/vault/summary)
-  services.push({ name: "indexer", port: Number(process.env.INDEXER_PORT ?? 4016), entry: "services/indexer/main.ts" });
+  services.push({ name: "indexer", port: Number(process.env.INDEXER_PORT || 4016), entry: "services/indexer/main.ts" });
 }
 if (!process.env.MONITOR_TARGETS) {
   env.MONITOR_TARGETS = services.map((s) => `${s.name}=http://127.0.0.1:${s.port}`).join(",");

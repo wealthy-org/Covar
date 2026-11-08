@@ -15,11 +15,11 @@ import { selectVenueAdapter } from "../shared/venue-adapters";
  * Boot sequence: replay the intent journal, then reconcile against the venue
  * before accepting anything new. A restart must never place a duplicate order.
  */
-const PORT = Number(process.env.EXEC_PORT ?? 4010);
-const DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
-const RISK_URL = process.env.RISK_URL ?? "http://127.0.0.1:4012";
-const SIGNER_URL = process.env.SIGNER_URL ?? "http://127.0.0.1:4013";
-const EXCHANGE_URL = process.env.EXCHANGE_URL ?? "http://127.0.0.1:4011";
+const PORT = Number(process.env.EXEC_PORT || 4010);
+const DIR = process.env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
+const RISK_URL = process.env.RISK_URL || "http://127.0.0.1:4012";
+const SIGNER_URL = process.env.SIGNER_URL || "http://127.0.0.1:4013";
+const EXCHANGE_URL = process.env.EXCHANGE_URL || "http://127.0.0.1:4011";
 
 // The venue is selected through the adapter seam: paper (default) or live (which
 // refuses to boot — no silent paper-trading under a live label).

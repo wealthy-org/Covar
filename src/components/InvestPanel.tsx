@@ -53,38 +53,84 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
   const [shares, setShares] = useState("");
   const auth = useAuth();
 
-  const refresh = useCallback(async () => {
-    if (!VAULT_ADDRESS) return;
+  /** true = everything read; false = something failed (caller retries sooner) */
+  const refresh = useCallback(async (): Promise<boolean> => {
+    if (!VAULT_ADDRESS) return true;
     try {
       const [v, x] = await Promise.all([readVault(VAULT_ADDRESS), readV2(VAULT_ADDRESS, chain)]);
       setVault(v);
       setV2(x);
       setReadErr(null);
       if (account) setAcct(await readAccount(VAULT_ADDRESS, v.asset, account, chain));
+      return true;
     } catch (e) {
       setReadErr(explainError(e));
+      return false;
     }
   }, [account, chain]);
 
+  // Poll every 20 s; after a failed read retry in 3 s, so one slow RPC or wallet
+  // answer right after a reload doesn't leave the panel on "…" for a whole cycle.
   useEffect(() => {
-    void refresh();
-    const t = setInterval(() => void refresh(), 20_000);
-    return () => clearInterval(t);
+    let stop = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const loop = async () => {
+      const ok = await refresh();
+      if (!stop) timer = setTimeout(() => void loop(), ok ? 20_000 : 3_000);
+    };
+    void loop();
+    return () => {
+      stop = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [refresh]);
 
-  // pick up an already-authorised wallet silently, and follow account/chain switches
+  // Pick up an already-authorised wallet silently, and follow account/chain switches.
+  // After a reload the wallet may answer late (extension injecting after hydration,
+  // a slow first request), so a single eth_accounts call is not enough: retry for
+  // ~30 s until it answers, and also react to MetaMask's `ethereum#initialized`.
   useEffect(() => {
-    const eth = injected();
-    if (!eth) return;
-    void eth.request({ method: "eth_accounts" }).then((a: string[]) => a?.[0] && setAccount(a[0])).catch(() => undefined);
-    void eth.request({ method: "eth_chainId" }).then((c: string) => setWalletChain(Number(BigInt(c)))).catch(() => undefined);
+    let cancelled = false;
+    let found = false;
+    let attached: ReturnType<typeof injected> = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const onAcc = (a: string[]) => setAccount(a?.[0] ?? null);
     const onChain = (c: string) => setWalletChain(Number(BigInt(c)));
-    eth.on?.("accountsChanged", onAcc);
-    eth.on?.("chainChanged", onChain);
+    const probe = async (attempt: number) => {
+      const eth = injected();
+      if (eth && !attached) {
+        attached = eth;
+        eth.on?.("accountsChanged", onAcc);
+        eth.on?.("chainChanged", onChain);
+      }
+      if (eth) {
+        try {
+          const c: string = await eth.request({ method: "eth_chainId" });
+          if (!cancelled) setWalletChain(Number(BigInt(c)));
+        } catch {
+          /* retried below */
+        }
+        try {
+          const a: string[] = await eth.request({ method: "eth_accounts" });
+          if (!cancelled && a?.[0]) {
+            found = true;
+            setAccount(a[0]);
+          }
+        } catch {
+          /* retried below */
+        }
+      }
+      if (!cancelled && !found && attempt < 20) timer = setTimeout(() => void probe(attempt + 1), 1500);
+    };
+    const onInit = () => void probe(0);
+    void probe(0);
+    window.addEventListener("ethereum#initialized", onInit, { once: true });
     return () => {
-      eth.removeListener?.("accountsChanged", onAcc);
-      eth.removeListener?.("chainChanged", onChain);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("ethereum#initialized", onInit);
+      attached?.removeListener?.("accountsChanged", onAcc);
+      attached?.removeListener?.("chainChanged", onChain);
     };
   }, []);
 

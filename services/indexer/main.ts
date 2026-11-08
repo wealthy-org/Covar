@@ -32,19 +32,19 @@ import { buildSummary, type IndexedEvent, type TransferOut } from "./summary";
  *   GET /health
  */
 
-const PORT = Number(process.env.INDEXER_PORT ?? 4016);
+const PORT = Number(process.env.INDEXER_PORT || 4016);
 function rpcUrl() {
-  if (process.env.INDEXER_RPC_URL ?? process.env.RPC_URL) return (process.env.INDEXER_RPC_URL ?? process.env.RPC_URL)!;
-  const chain = process.env.INDEXER_CHAIN ?? process.env.OPERATOR_CHAIN ?? "local";
-  if (chain === "mainnet") return process.env.RH_MAINNET_RPC ?? "https://rpc.mainnet.chain.robinhood.com";
-  if (chain === "testnet") return process.env.RH_TESTNET_RPC ?? "https://rpc.testnet.chain.robinhood.com";
-  return process.env.NEXT_PUBLIC_LOCAL_RPC ?? "http://127.0.0.1:8545";
+  if (process.env.INDEXER_RPC_URL || process.env.RPC_URL) return (process.env.INDEXER_RPC_URL || process.env.RPC_URL)!;
+  const chain = process.env.INDEXER_CHAIN || process.env.OPERATOR_CHAIN || "local";
+  if (chain === "mainnet") return process.env.RH_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com";
+  if (chain === "testnet") return process.env.RH_TESTNET_RPC || "https://rpc.testnet.chain.robinhood.com";
+  return process.env.NEXT_PUBLIC_LOCAL_RPC || "http://127.0.0.1:8545";
 }
 const RPC_URL = rpcUrl();
-const DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
-const POLL_MS = Number(process.env.INDEXER_POLL_MS ?? 2_000);
-const CHUNK = Math.max(100, Number(process.env.INDEXER_CHUNK ?? 5_000));
-const CHUNKS_PER_POLL = Math.max(1, Number(process.env.INDEXER_CHUNKS_PER_POLL ?? 10));
+const DIR = process.env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
+const POLL_MS = Number(process.env.INDEXER_POLL_MS || 2_000);
+const CHUNK = Math.max(100, Number(process.env.INDEXER_CHUNK || 5_000));
+const CHUNKS_PER_POLL = Math.max(1, Number(process.env.INDEXER_CHUNKS_PER_POLL || 10));
 
 const EVENTS = [
   "event Deposit(address indexed investor, uint256 assetsIn, uint256 fee, uint256 shares)",
@@ -99,7 +99,7 @@ function loadCheckpoint(): Checkpoint {
     return cp;
   } catch {
     for (const f of [stateFile, transferFile]) fs.rmSync(f, { force: true });
-    return { vaultAddress: process.env.INDEXER_VAULT_ADDRESS ?? null, lastBlock: -1, updatedAt: new Date().toISOString() };
+    return { vaultAddress: process.env.INDEXER_VAULT_ADDRESS || null, lastBlock: -1, updatedAt: new Date().toISOString() };
   }
 }
 
@@ -110,7 +110,7 @@ function saveCheckpoint(cp: Checkpoint) {
 
 /** Vault address: explicit env, the web app's env, or the local deployment manifest. */
 function resolveVaultAddress(): string | null {
-  const env = process.env.INDEXER_VAULT_ADDRESS ?? process.env.OPERATOR_VAULT_ADDRESS ?? process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS;
+  const env = process.env.INDEXER_VAULT_ADDRESS || process.env.OPERATOR_VAULT_ADDRESS || process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS;
   if (env) return env;
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "deployments", "31337.json"), "utf8")) as { address?: string };

@@ -3,8 +3,8 @@ import { createSigner } from "./app";
 import { serve } from "../shared/http";
 import type { OrderIntent } from "../shared/types";
 
-const PORT = Number(process.env.SIGNER_PORT ?? 4013);
-const DIR = process.env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
+const PORT = Number(process.env.SIGNER_PORT || 4013);
+const DIR = process.env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
 
 const signer = createSigner({ dir: DIR });
 

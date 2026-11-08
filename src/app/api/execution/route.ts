@@ -8,7 +8,7 @@ import { NextResponse } from "next/server";
  * If the plane is not running the route reports that honestly instead of
  * inventing state.
  */
-const EXEC_URL = process.env.EXEC_URL ?? "http://127.0.0.1:4010";
+const EXEC_URL = process.env.EXEC_URL || "http://127.0.0.1:4010";
 export const dynamic = "force-dynamic";
 
 async function call(path: string, init?: RequestInit) {

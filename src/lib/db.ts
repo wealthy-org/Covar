@@ -15,12 +15,13 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 // DATABASE_URL explicitly (e.g. postgres) — there is no silent in-memory mode.
 // Dev default is made absolute eagerly: Prisma resolves relative `file:` URLs
 // against the schema dir, not the process cwd, and Next dev's cwd differs.
-const DB_URL = process.env.DATABASE_URL ?? `file:${path.join(process.cwd(), "prisma", "dev.db")}`;
+const ENV_URL = process.env.DATABASE_URL?.trim() || undefined; // empty `DATABASE_URL=` counts as unset
+const DB_URL = ENV_URL ?? `file:${path.join(process.cwd(), "prisma", "dev.db")}`;
 
 export const prisma = (globalForPrisma.prisma ??= new PrismaClient({
   datasources: { db: { url: DB_URL } },
 }));
 
 export const dbConfigured = () => prisma !== null;
-export const dbUrl = () => process.env.DATABASE_URL ?? "file:<project>/prisma/dev.db (dev default)";
+export const dbUrl = () => ENV_URL ?? "file:<project>/prisma/dev.db (dev default)";
 export const dbLabel = () => (DB_URL.startsWith("postgres") ? "prisma-postgres" : "prisma-sqlite");

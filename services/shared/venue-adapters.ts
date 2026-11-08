@@ -128,13 +128,13 @@ export const LIVE_CONFIRM_REFUSAL =
   "VENUE_ADAPTER=live sends REAL orders to Lighter. Set LIVE_TRADING_CONFIRM=yes to acknowledge (and LIGHTER_MAINNET_CONFIRM=yes for a mainnet network).";
 
 export function selectVenueAdapter(): VenueAdapter {
-  const which = (process.env.VENUE_ADAPTER ?? "paper").toLowerCase();
+  const which = (process.env.VENUE_ADAPTER || "paper").toLowerCase();
   // Refuse AT BOOT when the live configuration is incomplete: a process configured
   // for a live venue never starts half-configured, and never paper-trades under a live label.
   if (which === "live") {
     if (process.env.LIVE_TRADING_CONFIRM !== "yes") throw new Error(LIVE_CONFIRM_REFUSAL);
     return lighterVenueAdapter(lighterConfigFromEnv());
   }
-  if (which === "paper") return paperVenueAdapter(process.env.EXCHANGE_URL ?? "http://127.0.0.1:4011");
+  if (which === "paper") return paperVenueAdapter(process.env.EXCHANGE_URL || "http://127.0.0.1:4011");
   throw new Error(`Unknown VENUE_ADAPTER "${which}" (expected paper|live). Refusing to guess.`);
 }

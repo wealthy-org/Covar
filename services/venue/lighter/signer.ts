@@ -53,7 +53,7 @@ export interface LighterSigner {
   cancelOrder(o: { marketIndex: number; orderIndex: number; nonce: number; apiKeyIndex: number; accountIndex: number }): SignedTx;
 }
 
-export const SIGNER_DIR = process.env.LIGHTER_SIGNER_DIR ?? path.join(process.cwd(), "services", "venue", "lighter");
+export const SIGNER_DIR = process.env.LIGHTER_SIGNER_DIR || path.join(process.cwd(), "services", "venue", "lighter");
 
 let loading: Promise<LighterSigner> | null = null;
 

@@ -19,8 +19,8 @@ const TOKENS: Record<number, { symbol: string; address: string }> = {
   // testnet: the brief's table is mainnet-only (no bytecode on 46630). Paxos, the
   // USDG issuer, publishes the Robinhood Testnet token at docs.paxos.com/guides/
   // stablecoin/usdg/testnet (test funds: faucet.paxos.com). Checked on-chain.
-  46630: { symbol: "USDG", address: process.env.USDG_ADDRESS ?? "0x7E955252E15c84f5768B83c41a71F9eba181802F" },
-  4663: { symbol: "USDG", address: process.env.USDG_ADDRESS ?? "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" },
+  46630: { symbol: "USDG", address: process.env.USDG_ADDRESS || "0x7E955252E15c84f5768B83c41a71F9eba181802F" },
+  4663: { symbol: "USDG", address: process.env.USDG_ADDRESS || "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" },
 };
 
 const ERC20_ABI = ["function decimals() view returns (uint8)", "function symbol() view returns (string)"];

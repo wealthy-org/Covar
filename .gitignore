@@ -23,4 +23,5 @@ prisma/dev.db*
 # TS incremental build cache (regenerated)
 tsconfig.tsbuildinfo
 
-contracts
+# e2e server logs (scripts/e2e-invest.mjs)
+e2e-logs/

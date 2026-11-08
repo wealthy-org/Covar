@@ -19,6 +19,77 @@ import { createChainPort } from "../../services/operator/chain";
 
 test.skip(!process.env.E2E_CHAIN, "needs a local chain fixture — run pnpm test:e2e:invest");
 test.describe.configure({ mode: "serial" });
+// Next dev compiles routes on first visit (slow on Windows): give assertions room.
+// These only matter when something is slow; a passing run is not made longer.
+test.use({ navigationTimeout: 90_000 });
+
+/* ---- failure diagnostics: printed to the terminal + test-results/e2e-failure.txt ---- */
+const browserLog: string[] = [];
+test.beforeEach(async ({ page }) => {
+  browserLog.length = 0;
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") browserLog.push(`[${m.type()}] ${m.text()}`.slice(0, 500));
+  });
+  page.on("pageerror", (e) => browserLog.push(`[pageerror] ${e.message}`.slice(0, 500)));
+  page.on("requestfailed", (r) => browserLog.push(`[requestfailed] ${r.method()} ${r.url()} — ${r.failure()?.errorText}`.slice(0, 300)));
+});
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return;
+  const safe = async <T>(f: () => Promise<T>, fb: T) => {
+    try {
+      return await f();
+    } catch {
+      return fb;
+    }
+  };
+  const panel = await safe(() => page.getByTestId("invest-panel").innerText({ timeout: 2000 }), "(no invest-panel on the page)");
+  const body = await safe(() => page.locator("body").innerText({ timeout: 2000 }), "(page unreadable)");
+  const wallet = await safe(
+    () =>
+      page.evaluate(async () => {
+        const eth = (window as unknown as { ethereum?: { request: (a: { method: string }) => Promise<unknown> } }).ethereum;
+        if (!eth) return "window.ethereum missing";
+        const r = await Promise.allSettled([eth.request({ method: "eth_accounts" }), eth.request({ method: "eth_chainId" })]);
+        return JSON.stringify(r.map((x) => (x.status === "fulfilled" ? x.value : `ERR ${(x.reason as Error)?.message}`)));
+      }),
+    "(evaluate failed)"
+  );
+  const t0 = Date.now();
+  const nodeRpc = await safe(async () => {
+    const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }), signal: AbortSignal.timeout(5000) });
+    return `${JSON.stringify(await r.json())} in ${Date.now() - t0} ms`;
+  }, "FAILED/TIMEOUT (5 s)");
+  const browserRpc = await safe(
+    () =>
+      page.evaluate(async (url) => {
+        const s = performance.now();
+        try {
+          const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }), signal: AbortSignal.timeout(5000) });
+          return `${JSON.stringify(await r.json())} in ${Math.round(performance.now() - s)} ms`;
+        } catch (e) {
+          return `ERR ${(e as Error).name}: ${(e as Error).message} after ${Math.round(performance.now() - s)} ms`;
+        }
+      }, RPC),
+    "(evaluate failed)"
+  );
+  const report = [
+    `=== E2E failure: ${info.title}`,
+    `url: ${page.url()}`,
+    `wallet (eth_accounts, eth_chainId): ${wallet}`,
+    `RPC from the test process: ${nodeRpc}`,
+    `RPC from the browser: ${browserRpc}`,
+    `--- invest-panel text ---`,
+    panel.slice(0, 2500),
+    `--- page text (first 2500 chars) ---`,
+    body.slice(0, 2500),
+    `--- browser console errors/warnings (last 40) ---`,
+    ...browserLog.slice(-40),
+    `=== end`,
+  ].join("\n");
+  console.log("\n" + report + "\n");
+  fs.mkdirSync("test-results", { recursive: true });
+  fs.appendFileSync(path.join("test-results", "e2e-failure.txt"), report + "\n\n");
+});
 
 async function installWallet(page: Page, key: string) {
   const provider = new JsonRpcProvider(RPC, undefined, { cacheTimeout: -1 });
@@ -149,7 +220,7 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
 });
 
 test("owner console v2: caps, limits and trading account from the browser", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   await installWallet(page, keyOf(ROLES.owner));
   await page.goto(`/chain/console`);
   // an already-authorised wallet is picked up silently (eth_accounts) — no connect click needed
@@ -175,7 +246,7 @@ test("owner console v2: caps, limits and trading account from the browser", asyn
 });
 
 test("3.6 on-chain record: Discover row, vault agent page and treasury all read the indexer", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const feeWallet = new Wallet(keyOf(ROLES.fee)).address;
   const feeBal = await usdgOf(feeWallet);
   expect(feeBal).toBeGreaterThan(0n); // the investor test above paid both fees on-chain
@@ -195,7 +266,7 @@ test("3.6 on-chain record: Discover row, vault agent page and treasury all read 
   await row.getByRole("link", { name: "Covar Vault" }).click();
 
   // agent page: chain-backed record + the real Invest panel
-  await expect(page).toHaveURL(/\/agents\/covar-vault$/);
+  await expect(page).toHaveURL(/\/agents\/covar-vault$/, { timeout: 60_000 });
   const activity = page.getByTestId("vault-activity");
   await expect(activity).toContainText("On-chain record", { timeout: 30_000 });
   await expect(activity.getByTestId("vault-event").filter({ hasText: "Claimed" })).toHaveCount(1);
@@ -213,7 +284,7 @@ test("3.6 on-chain record: Discover row, vault agent page and treasury all read 
 });
 
 test("3.7 credits: sign in → USDG top-up in the wallet → server verifies on-chain → balance, ledger, treasury", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const investor = await installWallet(page, keyOf(ROLES.investor));
   const treasury = new Wallet(keyOf(ROLES.creditsTreasury)).address;
   const before = await usdgOf(treasury);

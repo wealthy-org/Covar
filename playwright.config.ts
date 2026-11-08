@@ -11,8 +11,10 @@ const BASE_URL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:3000";
 export default defineConfig({
   testDir: "./tests/e2e",
   timeout: 60_000,
+  // Next dev compiles a route on first visit (slow on Windows); 15 s per assertion.
+  expect: { timeout: 15_000 },
   retries: process.env.CI ? 1 : 0,
-  use: { baseURL: BASE_URL },
+  use: { baseURL: BASE_URL, screenshot: "only-on-failure" },
   webServer: process.env.E2E_NO_SERVER
     ? undefined
     : {

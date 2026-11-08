@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
  */
 export const dynamic = "force-dynamic";
 
-const INDEXER_URL = (process.env.INDEXER_URL ?? "http://127.0.0.1:4016").replace(/\/$/, "");
+const INDEXER_URL = (process.env.INDEXER_URL || "http://127.0.0.1:4016").replace(/\/$/, "");
 
 export async function GET() {
   const vault = process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS;
