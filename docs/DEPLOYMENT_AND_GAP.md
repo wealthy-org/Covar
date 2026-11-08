@@ -1,5 +1,7 @@
 # Covar — status terhadap brief & panduan menjalankan semua fitur (incl. deployment)
 
+> **Urutan langkah go-live yang lengkap & terbaru ada di [`GO_LIVE_RUNBOOK.md`](./GO_LIVE_RUNBOOK.md).** Dokumen ini adalah status & gap.
+
 Dokumen ini menjawab dua pertanyaan secara eksplisit:
 
 1. **Apa yang harus dilakukan supaya semua fitur berjalan** — lokal penuh maupun di deployment (Vercel + hosting services).
@@ -141,12 +143,12 @@ pnpm services     # atau: pnpm indexer utk indexer berdampingan
 
 | Env key | Isinya | Dari mana Anda mendapatkannya | Dimana diisi |
 |---|---|---|---|
-| `DEPLOYER_KEY` | Private key wallet deployer **khusus testnet** (jangan wallet utama!) | MetaMask → buat akun baru → Account details → Show private key. Isi testnet ETH via faucet resmi `faucet.testnet.chain.robinhood.com` (backup: `faucets.chain.link/robinhood-testnet`). Add network dulu: chainId 46630, RPC `https://rpc.testnet.chain.robinhood.com`. Catatan brief: akses RPC butuh VPN di sebagian region. | `.env` lokal (server-only, jangan commit) |
+| `DEPLOYER_KEY` | Private key wallet **admin/owner** — brief §4: wallet yang SAMA untuk testnet & mainnet (buat wallet baru khusus Covar, bukan wallet pribadi lama; key hanya di `.env` laptop saat deploy) | MetaMask → buat akun baru → Account details → Show private key. Isi testnet ETH via faucet resmi `faucet.testnet.chain.robinhood.com` (backup: `faucets.chain.link/robinhood-testnet`). Add network dulu: chainId 46630, RPC `https://rpc.testnet.chain.robinhood.com`. Catatan brief: akses RPC butuh VPN di sebagian region. | `.env` lokal (server-only, jangan commit) |
 | `OPERATOR_ADDRESS` | Address wallet ke-2 (operator vault: reporter NAV & settler withdrawal) | MetaMask akun baru lagi — yang dibutuhkan hanya address-nya | `.env` lokal |
 | `TRADING_SIGNER_PRIVATE_KEY` | Private key dari wallet operator itu (dipakai signer/executor saat anchor ke chain) | Akun operator yang sama → Show private key | `.env` lokal |
 | `FEE_RECIPIENT_ADDRESS` | Address wallet ke-3 (penerima fee platform) | MetaMask akun baru — cukup address | `.env` lokal |
-| `USDG_ADDRESS` | Kontrak token USDG **testnet** | Harus dari docs/daftar resmi Robinhood Chain (tabel brief hanya mainnet). Verifikasi via `explorer.testnet.chain.robinhood.com` (ada bytecode = tervalidasi). **Belum terkonfirmasi — jangan ditebak.** | `.env` lokal |
-| `AI_PROVIDER_API_KEY` | API key LLM untuk Copilot (opsional) | `console.anthropic.com` (atau provider kompatibel) | `.env` lokal + Vercel env |
+| `USDG_ADDRESS` | Kontrak token USDG **testnet** | **Terkonfirmasi:** `0x7E955252E15c84f5768B83c41a71F9eba181802F` — dipublikasikan Paxos (penerbit USDG) di docs.paxos.com/guides/stablecoin/usdg/testnet; on-chain Global Dollar · USDG · 6 desimal. Dana uji: faucet.paxos.com. Default di script testnet. | `.env` lokal |
+| `AI_PROVIDER_API_KEY` (+ `AI_PROVIDER`, `AI_MODEL`) | API key Copilot (opsional) | **Orbio** (rekomendasi, = referensi): `orbio.so/dashboard` → API key `sk-orbio-…`; atau `console.anthropic.com` / OpenAI | `.env` lokal + Vercel env |
 | `DATABASE_URL` | Connection string **Postgres** (hanya deployment) | Neon / Vercel Postgres → copy "connection string"-nya | Vercel env saja (lokal biarkan default SQLite) |
 | `NEXT_PUBLIC_COVAR_VAULT_ADDRESS` | Address vault | **Tidak dicari — dihasilkan:** muncul di output `pnpm deploy:testnet` dan `deployments/46630.json` | `.env` + Vercel env, setelah deploy |
 | `CONFIRM_MAINNET` | persis `yes` | Hanya saat mainnet deploy (setelah semua gate lolos) | `.env` lokal |
@@ -156,7 +158,7 @@ Prosedurnya: buat 3 wallet testnet terpisah di MetaMask → isi deployer dari fa
 di `.env` → `pnpm preflight:testnet` (cek kesiapan, read-only) → `pnpm deploy:testnet` → ambil address
 dari output/`deployments/46630.json` → isi `NEXT_PUBLIC_COVAR_VAULT_ADDRESS` di `.env` **dan** Vercel →
 ulangi `pnpm rehearse:e2e` di chain 46630. Aturan keamanan: private key tidak pernah ke chat/repo/file
-yang ter-commit; `.env` sudah masuk `.gitignore`; wallet yang sama **jangan** dipakai mainnet.
+yang ter-commit; `.env` sudah masuk `.gitignore`; wallet admin yang sama dipakai di mainnet (brief §4) — karena itu key-nya tidak pernah ditaruh di server mana pun dan dihapus dari `.env` setelah deploy.
 
 ### F.2 Engineering tersisa (tidak butuh keputusan Anda, urutan kerja berikutnya)
 

@@ -16,10 +16,10 @@ import fs from "fs";
 import path from "path";
 
 const TOKENS: Record<number, { symbol: string; address: string }> = {
-  // testnet: the brief's table is mainnet-only (verified: no bytecode at these
-  // addresses on 46630). The testnet collateral address must be confirmed by the
-  // owner against docs.robinhood.com/chain/contracts/ before use.
-  46630: { symbol: "USDG", address: process.env.USDG_ADDRESS ?? "" },
+  // testnet: the brief's table is mainnet-only (no bytecode on 46630). Paxos, the
+  // USDG issuer, publishes the Robinhood Testnet token at docs.paxos.com/guides/
+  // stablecoin/usdg/testnet (test funds: faucet.paxos.com). Checked on-chain.
+  46630: { symbol: "USDG", address: process.env.USDG_ADDRESS ?? "0x7E955252E15c84f5768B83c41a71F9eba181802F" },
   4663: { symbol: "USDG", address: process.env.USDG_ADDRESS ?? "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" },
 };
 
@@ -103,7 +103,7 @@ async function main() {
   console.log("Next:");
   console.log(`  1. set NEXT_PUBLIC_COVAR_VAULT_ADDRESS=${address} and NEXT_PUBLIC_CHAIN_ENV=${chainId === 4663 ? "mainnet" : "testnet"}`);
   console.log("  2. report the first NAV from the operator wallet, then test a 10 USDG deposit");
-  console.log("  3. verify the source on the explorer before advertising the address");
+  console.log(`  3. verify the source: pnpm verify:${chainId === 4663 ? "mainnet" : "testnet"}`);
   console.log("  4. remove DEPLOYER_KEY (and CONFIRM_MAINNET) from .env — see docs/GO_LIVE_RUNBOOK.md\n");
 }
 

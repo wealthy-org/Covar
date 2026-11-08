@@ -22,6 +22,14 @@ const COLS: { title: string; links: { href: string; label: string; ext?: boolean
       { href: "/docs#parity", label: "Parity register" },
     ],
   },
+  {
+    title: "Reference",
+    links: [
+      { href: "https://www.sharpe.ac/", label: "Sharpe (reference)", ext: true },
+      { href: "https://docs.robinhood.com/chain/", label: "Robinhood Chain docs", ext: true },
+      { href: "https://docs.lighter.xyz/", label: "Lighter docs", ext: true },
+    ],
+  },
 ];
 
 export function Footer() {

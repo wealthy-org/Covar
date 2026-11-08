@@ -21,7 +21,7 @@ ticker at a different address is *not* the same token — this is the exact mist
 ## 1 — Local rehearsal (no chain, no funds)
 
 ```bash
-TS_NODE_PROJECT=tsconfig.hardhat.json npx hardhat node        # terminal 1
+node scripts/hardhat.mjs node        # terminal 1
 npm run deploy:local                                          # terminal 2
 # prints: NEXT_PUBLIC_COVAR_VAULT_ADDRESS=0x… NEXT_PUBLIC_RH_CHAIN_ID=31337
 

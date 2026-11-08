@@ -13,10 +13,9 @@ const NETWORKS: Record<string, { chainId: number; usdg: string; weth: string; rp
   robinhoodTestnet: {
     chainId: 46630,
     rpc: process.env.RH_TESTNET_RPC ?? "https://rpc.testnet.chain.robinhood.com",
-    // The brief's token table resolves on MAINNET only (verified 4 Nov 2026: no
-    // bytecode at either address on 46630). Testnet collateral must be confirmed
-    // by the owner — set USDG_ADDRESS explicitly, never inherit the mainnet value.
-    usdg: process.env.USDG_ADDRESS ?? "",
+    // The brief's token table resolves on MAINNET only (no bytecode on 46630).
+    // Testnet USDG as published by Paxos (docs.paxos.com/guides/stablecoin/usdg/testnet).
+    usdg: process.env.USDG_ADDRESS ?? "0x7E955252E15c84f5768B83c41a71F9eba181802F",
     weth: process.env.WETH_ADDRESS ?? "",
   },
   robinhoodMainnet: {

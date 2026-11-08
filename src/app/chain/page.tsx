@@ -10,8 +10,8 @@ const GATES = [
   ["Unit + integration suite", "pass", "18 vault assertions + 39 execution-plane assertions"],
   ["Order execution & risk gate", "partial", "paper venue behind the real service boundary; no live adapter"],
   ["Acceptance criteria (brief §15)", "partial", "UI paths covered; live venue adapter missing"],
-  ["Testnet deployment", "blocked", "needs a funded deployer key + confirmed testnet USDG"],
-  ["End-to-end deposit → trade → withdraw", "pending", "requires a deployed vault"],
+  ["Testnet deployment", "pass", "CovarVault on 46630 · source verified on the explorer · Paxos test USDG"],
+  ["End-to-end deposit → trade → withdraw", "pending", "run it from the vault console; live venue adapter still missing"],
   ["Mainnet deployment", "blocked", "refused until the four gates above pass"],
 ];
 
@@ -33,6 +33,9 @@ export default function ChainPage() {
         <div className="row gap-8">
           <Link href="/docs#network" className="btn btn-secondary">
             Deployment runbook
+          </Link>
+          <Link href="/chain/console" className="btn btn-secondary" data-testid="open-console">
+            Vault console
           </Link>
           <Link href="/portfolio" className="btn btn-primary">
             My money
@@ -86,7 +89,7 @@ export default function ChainPage() {
             ["4663 chain id", "confirmed (0x1237)"],
             ["USDG decimals (mainnet)", "6 · symbol USDG"],
             ["WETH decimals (mainnet)", "18 · symbol WETH"],
-            ["USDG on testnet 46630", "no code at the brief's address"],
+            ["USDG on testnet 46630", "0x7E95…802F · Paxos-published · 6 decimals"],
           ].map(([k, v]) => (
             <div key={k} className="row between">
               <span className="tiny">{k}</span>
@@ -94,8 +97,8 @@ export default function ChainPage() {
             </div>
           ))}
           <span className="tiny">
-            Token addresses in the brief resolve on mainnet only. Testnet collateral must be confirmed by the owner
-            before any deployment — a matching ticker at another address is not the same token.
+            Token addresses in the brief resolve on mainnet only. On testnet the vault uses the USDG address Paxos (the
+            issuer) publishes for Robinhood Testnet — a matching ticker at another address is not the same token.
           </span>
         </div>
       </div>

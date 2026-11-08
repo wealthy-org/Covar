@@ -12,7 +12,8 @@ import { buildStrategy, readPrompt, strategyFromIntent, type PromptIntent } from
 
 export type CopilotProvider =
   | { kind: "none"; label: string; reason: string }
-  | { kind: "anthropic"; label: string; model: string };
+  | { kind: "anthropic"; label: string; model: string; apiKey: string; baseUrl: string }
+  | { kind: "openai-compatible"; label: string; model: string; apiKey: string; baseUrl: string };
 
 const VALID_STYLES = ["trend", "meanReversion", "breakout", "carry", "momentum"] as const;
 const VALID_TF = ["5m", "15m", "1h", "4h"] as const;
@@ -48,20 +49,64 @@ Rules:
 - Only include the numeric overrides the user actually stated. Never invent numbers.
 - Output raw JSON only.`;
 
+/**
+ * Provider selection (server-side env only — keys never reach the browser).
+ *
+ *   AI_PROVIDER          orbio | anthropic | openai   (optional; inferred from the key prefix)
+ *   AI_PROVIDER_API_KEY  sk-orbio-… / sk-ant-… / sk-…
+ *   AI_MODEL             optional model id override
+ *   AI_BASE_URL          optional gateway override (OpenAI-compatible providers)
+ *
+ * Orbio is the reference product's AI dependency (brief §7/§8): an
+ * OpenAI-compatible gateway at api.orbio.so with one key for many models.
+ * Legacy ANTHROPIC_API_KEY / COPILOT_MODEL are still honoured.
+ */
+const PROVIDERS = {
+  orbio: { label: "Orbio", baseUrl: "https://api.orbio.so/api/v1", model: "anthropic/claude-haiku-4.5", wire: "openai-compatible" },
+  openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-5-mini", wire: "openai-compatible" },
+  anthropic: { label: "Anthropic (Claude)", baseUrl: "https://api.anthropic.com/v1", model: "claude-haiku-4-5-20251001", wire: "anthropic" },
+} as const;
+type ProviderName = keyof typeof PROVIDERS;
+
+const envValue = (k: string) => {
+  const v = process.env[k]?.trim();
+  return v && !v.includes("<") && !v.includes("...") ? v : undefined;
+};
+
 export function copilotProvider(): CopilotProvider {
-  if (process.env.ANTHROPIC_API_KEY) {
+  const apiKey = envValue("AI_PROVIDER_API_KEY") ?? envValue("ANTHROPIC_API_KEY");
+  if (!apiKey) {
     return {
-      kind: "anthropic",
-      label: "Anthropic (Claude)",
-      model: process.env.COPILOT_MODEL || "claude-haiku-4-5-20251001",
+      kind: "none",
+      label: "rules parser",
+      reason:
+        "No model key configured. Set AI_PROVIDER_API_KEY (Orbio, Anthropic or OpenAI) to enable the language model; the deterministic rules parser answers until then, and every response is labelled accordingly.",
     };
   }
-  return {
-    kind: "none",
-    label: "rules parser",
-    reason:
-      "No model key configured. Set ANTHROPIC_API_KEY to enable the language model; the deterministic rules parser answers until then, and every response is labelled accordingly.",
-  };
+  const declared = envValue("AI_PROVIDER")?.toLowerCase();
+  const name: ProviderName | undefined =
+    declared && declared in PROVIDERS
+      ? (declared as ProviderName)
+      : !envValue("AI_PROVIDER_API_KEY") || apiKey.startsWith("sk-ant-")
+        ? "anthropic"
+        : apiKey.startsWith("sk-orbio-")
+          ? "orbio"
+          : apiKey.startsWith("sk-")
+            ? "openai"
+            : undefined;
+  if (!name) {
+    return {
+      kind: "none",
+      label: "rules parser",
+      reason: `AI_PROVIDER "${declared ?? "(unset)"}" is not recognised and the key prefix is unknown. Use orbio, anthropic or openai; the rules parser answers until then.`,
+    };
+  }
+  const cfg = PROVIDERS[name];
+  const model = envValue("AI_MODEL") ?? (name === "anthropic" ? envValue("COPILOT_MODEL") : undefined) ?? cfg.model;
+  const baseUrl = (envValue("AI_BASE_URL") ?? cfg.baseUrl).replace(/\/+$/, "");
+  return cfg.wire === "anthropic"
+    ? { kind: "anthropic", label: cfg.label, model, apiKey, baseUrl }
+    : { kind: "openai-compatible", label: cfg.label, model, apiKey, baseUrl };
 }
 
 /** Strict validation of model output. Anything outside the contract is rejected. */
@@ -90,27 +135,53 @@ export function sanitizeInterpretation(raw: unknown): ModelInterpretation | null
   };
 }
 
-async function callAnthropic(prompt: string, model: string): Promise<string> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+async function callAnthropic(prompt: string, p: Extract<CopilotProvider, { kind: "anthropic" }>): Promise<string> {
+  const res = await fetch(`${p.baseUrl}/messages`, {
     method: "POST",
     signal: AbortSignal.timeout(12_000),
     headers: {
       "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY as string,
+      "x-api-key": p.apiKey,
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model,
+      model: p.model,
       max_tokens: 400,
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
     }),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`anthropic → HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`${p.label} → HTTP ${res.status}`);
   const json = (await res.json()) as { content?: { type: string; text?: string }[] };
   const text = json.content?.find((c) => c.type === "text")?.text;
-  if (!text) throw new Error("anthropic returned an empty response");
+  if (!text) throw new Error(`${p.label} returned an empty response`);
+  return text;
+}
+
+/** Orbio and OpenAI speak the same chat-completions wire format. */
+async function callOpenAICompatible(prompt: string, p: Extract<CopilotProvider, { kind: "openai-compatible" }>): Promise<string> {
+  const res = await fetch(`${p.baseUrl}/chat/completions`, {
+    method: "POST",
+    signal: AbortSignal.timeout(15_000),
+    headers: { "content-type": "application/json", authorization: `Bearer ${p.apiKey}` },
+    body: JSON.stringify({
+      model: p.model,
+      max_tokens: 400,
+      messages: [
+        { role: "system", content: SYSTEM },
+        { role: "user", content: prompt },
+      ],
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    // 402 = balance/credits exhausted on Orbio: surfaced, then the rules parser answers.
+    throw new Error(`${p.label} → HTTP ${res.status}${res.status === 402 ? " (AI credits exhausted)" : ""}`);
+  }
+  const json = (await res.json()) as { choices?: { message?: { content?: string | null } }[] };
+  const text = json.choices?.[0]?.message?.content;
+  if (!text) throw new Error(`${p.label} returned an empty response`);
   return text;
 }
 
@@ -135,9 +206,10 @@ export interface CopilotResponse {
 export async function interpretDraft(prompt: string): Promise<CopilotResponse> {
   const provider = copilotProvider();
 
-  if (provider.kind === "anthropic") {
+  if (provider.kind !== "none") {
     try {
-      const raw = await callAnthropic(prompt, provider.model);
+      const raw =
+        provider.kind === "anthropic" ? await callAnthropic(prompt, provider) : await callOpenAICompatible(prompt, provider);
       const parsed = sanitizeInterpretation(extractJson(raw));
       if (!parsed) throw new Error("model response failed interpretation validation");
       const intent: PromptIntent = {
