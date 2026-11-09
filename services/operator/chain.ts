@@ -4,7 +4,7 @@
  * call), so a revert is decoded into the contract's custom error before any gas
  * is spent, and each send waits for its receipt before the next one.
  */
-import { Contract, Interface, JsonRpcProvider, Wallet, type Provider } from "ethers";
+import { Contract, Interface, JsonRpcProvider, Wallet, getAddress, type Provider } from "ethers";
 import type { Action, RequestState, VaultPort, VaultSnapshot } from "./app";
 
 export const VAULT_ABI = [
@@ -79,8 +79,17 @@ export interface ChainPortConfig {
 export function createChainPort(cfg: ChainPortConfig): VaultPort & { address: string | null; checkRole(): Promise<string | null> } {
   const provider = cfg.provider ?? new JsonRpcProvider(cfg.rpcUrl);
   const wallet = cfg.privateKey ? new Wallet(cfg.privateKey, provider) : null;
-  const opAddr = wallet?.address ?? cfg.operatorAddress ?? null;
-  const vault = new Contract(cfg.vault, VAULT_ABI, wallet ?? provider);
+  // Addresses pasted from chat/explorers often have the wrong mixed-case checksum;
+  // ethers rejects those. Normalise (a malformed address still throws here).
+  const norm = (a: string, what: string) => {
+    try {
+      return getAddress(a.trim().toLowerCase());
+    } catch {
+      throw new Error(`${what} is not a valid 0x address: ${a}`);
+    }
+  };
+  const opAddr = wallet?.address ?? (cfg.operatorAddress ? norm(cfg.operatorAddress, "OPERATOR_ADDRESS") : null);
+  const vault = new Contract(norm(cfg.vault, "vault address"), VAULT_ABI, wallet ?? provider);
   let assetAddr: string | null = null;
   let v2: boolean | null = null;
 

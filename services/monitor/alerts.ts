@@ -92,7 +92,7 @@ export function alertSinkFromEnv(env: Record<string, string | undefined>, dir: s
     chatId: env.TELEGRAM_CHAT_ID || undefined,
     cooldownSec: env.ALERT_COOLDOWN_SEC ? Number(env.ALERT_COOLDOWN_SEC) : undefined,
     apiBase: env.TELEGRAM_API_BASE || undefined,
-    label: env.ALERT_LABEL ?? env.OPERATOR_CHAIN ?? "testnet",
+    label: env.ALERT_LABEL || env.OPERATOR_CHAIN || "testnet",
     fetchImpl,
   });
 }

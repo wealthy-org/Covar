@@ -19,20 +19,20 @@ import { closePortFromEnv, equityPortFromEnv, usdgUnits } from "./venue";
 import { alertSinkFromEnv } from "../monitor/alerts";
 
 const env = process.env;
-const PORT = Number(env.OPERATOR_PORT ?? 4014);
-const STATE_DIR = env.COVAR_STATE_DIR ?? path.join(process.cwd(), ".covar-state");
-const INTERVAL = Math.max(10, Number(env.OPERATOR_INTERVAL_SEC ?? 60));
+const PORT = Number(env.OPERATOR_PORT || 4014);
+const STATE_DIR = env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
+const INTERVAL = Math.max(10, Number(env.OPERATOR_INTERVAL_SEC || 60));
 const live = env.OPERATOR_MODE === "live";
 
 function rpcUrl() {
   if (env.OPERATOR_RPC_URL) return env.OPERATOR_RPC_URL;
-  const chain = env.OPERATOR_CHAIN ?? "testnet";
+  const chain = env.OPERATOR_CHAIN || "testnet";
   if (chain === "mainnet") {
     if (env.OPERATOR_MAINNET_CONFIRM !== "yes") throw new Error("OPERATOR_CHAIN=mainnet needs OPERATOR_MAINNET_CONFIRM=yes (only after the testnet soak passed)");
-    return env.RH_MAINNET_RPC ?? "https://rpc.mainnet.chain.robinhood.com";
+    return env.RH_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com";
   }
-  if (chain === "local") return env.NEXT_PUBLIC_LOCAL_RPC ?? "http://127.0.0.1:8545";
-  return env.RH_TESTNET_RPC ?? "https://rpc.testnet.chain.robinhood.com";
+  if (chain === "local") return env.NEXT_PUBLIC_LOCAL_RPC || "http://127.0.0.1:8545";
+  return env.RH_TESTNET_RPC || "https://rpc.testnet.chain.robinhood.com";
 }
 
 function config(): Partial<OperatorConfig> {
@@ -53,7 +53,7 @@ function config(): Partial<OperatorConfig> {
 }
 
 async function main() {
-  const vaultAddr = env.OPERATOR_VAULT_ADDRESS ?? env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS;
+  const vaultAddr = env.OPERATOR_VAULT_ADDRESS || env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS;
   if (!vaultAddr) throw new Error("set OPERATOR_VAULT_ADDRESS (or NEXT_PUBLIC_COVAR_VAULT_ADDRESS)");
   if (live && !env.OPERATOR_PRIVATE_KEY) throw new Error("OPERATOR_MODE=live needs OPERATOR_PRIVATE_KEY (wallet B, server-side only)");
 

@@ -29,7 +29,7 @@ export function usdgUnits(value: string | number): bigint {
 }
 
 export function equityPortFromEnv(env: Record<string, string | undefined>, fetchImpl: typeof fetch = fetch): VenueEquityPort {
-  const mode = (env.OPERATOR_VENUE ?? "none").toLowerCase();
+  const mode = (env.OPERATOR_VENUE || "none").toLowerCase();
   if (mode === "none") return { describe: "none (vault-only NAV)", equity: async () => 0n };
   if (mode === "manual") {
     const raw = env.OPERATOR_VENUE_EQUITY_USDG;
@@ -106,8 +106,8 @@ export function executionClosePort(opts: { execUrl: string; agentId?: string; pr
 }
 
 export function closePortFromEnv(env: Record<string, string | undefined>, fetchImpl: typeof fetch = fetch): ClosePort {
-  const venue = (env.OPERATOR_VENUE ?? "none").toLowerCase();
-  const mode = (env.OPERATOR_CLOSE ?? (venue === "none" ? "no-positions" : "execution")).toLowerCase();
+  const venue = (env.OPERATOR_VENUE || "none").toLowerCase();
+  const mode = (env.OPERATOR_CLOSE || (venue === "none" ? "no-positions" : "execution")).toLowerCase();
   if (mode === "no-positions") return { describe: "no-positions (vault does not trade)", status: async () => "done", start: async () => undefined };
   if (mode === "manual") return { describe: "manual (human marks positions closed)", status: async () => "pending", start: async () => undefined };
   if (mode === "execution") {
@@ -116,7 +116,7 @@ export function closePortFromEnv(env: Record<string, string | undefined>, fetchI
       const client = new LighterClient(lighterConfigFromEnv(env, { readOnly: true }), fetchImpl);
       price = async (m) => (await client.market(m).catch(() => null))?.lastPrice || null;
     }
-    return executionClosePort({ execUrl: env.EXEC_URL ?? "http://127.0.0.1:4010", price });
+    return executionClosePort({ execUrl: env.EXEC_URL || "http://127.0.0.1:4010", price });
   }
   throw new Error(`OPERATOR_CLOSE must be execution | no-positions | manual (got "${mode}")`);
 }

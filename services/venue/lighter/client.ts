@@ -37,12 +37,12 @@ export interface LighterConfig {
 
 /** Reads LIGHTER_* env. Throws a precise reason instead of guessing. */
 export function lighterConfigFromEnv(env: Record<string, string | undefined> = process.env, opts: { readOnly?: boolean } = {}): LighterConfig {
-  const network = (env.LIGHTER_NETWORK ?? "rh-testnet") as LighterConfig["network"];
+  const network = (env.LIGHTER_NETWORK || "rh-testnet") as LighterConfig["network"];
   let base: { baseUrl: string; chainId: number; collateral: string; mainnet: boolean };
   if (network === "custom") {
     // used by tests against a local mock; both values must be given together
     if (!env.LIGHTER_BASE_URL || !env.LIGHTER_CHAIN_ID) throw new Error("LIGHTER_NETWORK=custom needs LIGHTER_BASE_URL and LIGHTER_CHAIN_ID together");
-    base = { baseUrl: env.LIGHTER_BASE_URL, chainId: Number(env.LIGHTER_CHAIN_ID), collateral: env.LIGHTER_COLLATERAL ?? "USDG", mainnet: false };
+    base = { baseUrl: env.LIGHTER_BASE_URL, chainId: Number(env.LIGHTER_CHAIN_ID), collateral: env.LIGHTER_COLLATERAL || "USDG", mainnet: false };
   } else if (network in LIGHTER_NETWORKS) {
     base = LIGHTER_NETWORKS[network as LighterNetwork];
   } else {
@@ -50,7 +50,7 @@ export function lighterConfigFromEnv(env: Record<string, string | undefined> = p
   }
   const accountIndex = Number(env.LIGHTER_ACCOUNT_INDEX);
   const apiKeyIndex = Number(env.LIGHTER_API_KEY_INDEX);
-  const apiPrivateKey = env.LIGHTER_API_PRIVATE_KEY ?? "";
+  const apiPrivateKey = env.LIGHTER_API_PRIVATE_KEY || "";
   if (opts.readOnly) {
     // public reads (account equity, markets) need only the account index — no key, no trading
     if (!Number.isInteger(accountIndex) || env.LIGHTER_ACCOUNT_INDEX === undefined) throw new Error("Reading a Lighter account needs LIGHTER_ACCOUNT_INDEX");
@@ -69,7 +69,7 @@ export function lighterConfigFromEnv(env: Record<string, string | undefined> = p
   if (base.mainnet && env.LIGHTER_MAINNET_CONFIRM !== "yes") {
     throw new Error(`LIGHTER_NETWORK=${network} trades real funds. Set LIGHTER_MAINNET_CONFIRM=yes only after the testnet acceptance run passed.`);
   }
-  const slippageBps = Number(env.LIGHTER_SLIPPAGE_BPS ?? 50);
+  const slippageBps = Number(env.LIGHTER_SLIPPAGE_BPS || 50);
   if (!(slippageBps >= 1 && slippageBps <= 500)) throw new Error("LIGHTER_SLIPPAGE_BPS must be between 1 and 500");
   return { network, ...base, accountIndex, apiKeyIndex, apiPrivateKey, slippageBps };
 }
