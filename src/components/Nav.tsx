@@ -298,7 +298,7 @@ export function Nav() {
         {connectError && (
           <div role="alert" className="panel" style={{ position: "fixed", top: 112, right: 16, zIndex: 80, padding: 12, maxWidth: 320, boxShadow: "var(--shadow-md)" }}>
             <div className="stack gap-6">
-              <span className="small strong">Wallet connection failed</span>
+              <span className="small strong">Couldn&apos;t connect your wallet</span>
               <span className="tiny">{connectError}</span>
               <button className="btn btn-ghost btn-sm" onClick={() => setConnectError(null)}>
                 Dismiss

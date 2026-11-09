@@ -52,7 +52,7 @@ export default function CreditsPanel() {
               {c.balanceUsd === null ? "—" : money(c.balanceUsd, 4)}
             </span>
             <span className="tiny">
-              {cfg?.model ? `model: ${cfg.model}` : "no model configured: the free rules parser answers"}
+              {cfg?.model ? `AI model: ${cfg.model}` : "no AI model set up — the free rules parser answers"}
             </span>
           </div>
 
@@ -78,12 +78,12 @@ export default function CreditsPanel() {
                 )}
               </div>
               <span className="tiny">
-                Sends USDG from your wallet to the credits treasury {cfg.treasury?.slice(0, 6)}…{cfg.treasury?.slice(-4)} on chain {cfg.chainId}. 1 USDG = $1 of
-                credits · {cfg.minTopupUsd}–{cfg.maxTopupUsd} USDG per top-up. Credited only after the server reads the transfer on-chain.
+                1 USDG = $1 of credits · {cfg.minTopupUsd}–{cfg.maxTopupUsd} USDG per top-up. You approve a USDG transfer to the credits
+                address {cfg.treasury?.slice(0, 6)}…{cfg.treasury?.slice(-4)}; it is credited once the network confirms it.
               </span>
             </div>
           ) : (
-            <span className="small">Top-ups are not configured on this server yet (no credits treasury address).</span>
+            <span className="small">Top-ups aren&apos;t available on this server yet.</span>
           )}
           {msg && (
             <span className="tiny" role="status" data-testid="credits-msg" style={{ color: msg.ok ? "var(--ink-2)" : "var(--negative)" }}>
@@ -91,6 +91,11 @@ export default function CreditsPanel() {
             </span>
           )}
 
+          {c.entries.length === 0 && (
+            <div className="soft tiny" style={{ padding: "10px 12px", borderRadius: 6 }}>
+              No top-ups or AI usage yet. Each top-up and every AI call will be listed here with its exact cost.
+            </div>
+          )}
           {c.entries.length > 0 && (
             <div style={{ overflowX: "auto" }}>
               <table className="table">
@@ -141,9 +146,9 @@ export default function CreditsPanel() {
         </>
       )}
       <span className="mono-note">
-        Unused credits are a liability (prepaid service), not platform revenue. Each Copilot call is charged at its real token usage
-        {cfg?.pricing.inPerMTok != null ? ` ($${cfg.pricing.inPerMTok}/$${cfg.pricing.outPerMTok} per 1M in/out tokens` : " (provider-reported cost"}
-        {cfg ? ` + ${cfg.pricing.appFeePct}% application fee)` : ")"}. A failed call costs nothing; stops, exits and the emergency close path never depend on credits.
+        Unused credits stay yours (prepaid), they are not platform revenue. Each AI call costs its real token usage
+        {cfg?.pricing.inPerMTok != null ? ` ($${cfg.pricing.inPerMTok}/$${cfg.pricing.outPerMTok} per 1M tokens in/out` : " (provider-reported cost"}
+        {cfg ? ` + ${cfg.pricing.appFeePct}% app fee)` : ")"}. Failed calls are free; stopping, exiting and emergency close never need credits.
       </span>
     </section>
   );

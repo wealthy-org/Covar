@@ -172,13 +172,13 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
     const sharesOut = vault.raw.totalShares === 0n ? net : (net * 10n ** 18n) / vault.navPerShareWad;
     let error: string | null = null;
     const min = acct?.minDeposit ?? 10n * 10n ** BigInt(dec);
-    if (vault.depositsPaused) error = "Deposits are paused by the owner.";
-    else if (vault.closeOnly) error = "The vault is in close-only mode.";
-    else if (vault.navIsStale) error = "NAV is stale — the operator must report a fresh NAV before deposits reopen.";
+    if (vault.depositsPaused) error = "Deposits are paused for now. Withdrawals and claims still work.";
+    else if (vault.closeOnly) error = "New deposits are closed while the vault winds down positions. Withdrawals and claims still work.";
+    else if (vault.navIsStale) error = "Deposits are paused for a moment: the vault's share price hasn't been updated in the last 6 hours. It refreshes automatically — please try again shortly.";
     else if (gross < min) error = `Minimum deposit is ${fmt(min)} ${sym}.`;
     else if (v2 && gross > v2.maxDepositPerTx) error = `Per-deposit limit is ${fmt(v2.maxDepositPerTx)} ${sym}.`;
     else if (v2 && vault.raw.reportedAssets + net > v2.maxTotalAssets) error = `Only ${fmt(v2.maxTotalAssets > vault.raw.reportedAssets ? v2.maxTotalAssets - vault.raw.reportedAssets : 0n)} ${sym} of capacity left under the vault cap.`;
-    else if (acct && gross > acct.usdgBalance) error = `Your wallet holds ${fmt(acct.usdgBalance)} ${sym}.`;
+    else if (acct && gross > acct.usdgBalance) error = acct.usdgBalance === 0n ? `This wallet has no ${sym} yet. Add ${sym} to it first.` : `Your wallet only has ${fmt(acct.usdgBalance)} ${sym}. Enter that amount or less.`;
     return { ok: true as const, gross, fee, net, sharesOut, error };
   }, [amount, vault, v2, acct, dec, sym]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,13 +210,13 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
       const hash = await sendTx({ from: account, to, data, chain });
       setMsg({ tone: "info", text: `${label}: sent, waiting for confirmation…`, hash });
       const r = await waitForReceipt(hash);
-      if (!r.ok) throw new Error("The transaction reverted on-chain.");
+      if (!r.ok) throw new Error("The transaction failed on the network. Nothing moved except a small network fee.");
       setMsg({ tone: "ok", text: `${label}: confirmed in block ${r.blockNumber}.`, hash });
       after?.(hash);
       await refresh();
       setTimeout(() => void syncActivity(), 6_000); // once the indexer has the block
     } catch (e) {
-      setMsg({ tone: "err", text: e instanceof Error ? e.message : explainError(e) });
+      setMsg({ tone: "err", text: explainError(e) });
     } finally {
       setBusy(null);
     }
@@ -257,7 +257,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
 
       {readErr && (
         <div className="notice notice-warn" role="alert">
-          <div>Could not read the vault: {readErr}</div>
+          <div>Couldn&apos;t load the vault right now. {readErr}</div>
         </div>
       )}
 
@@ -274,7 +274,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
           <div className="kv">
             <span className="kv-k">NAV updated</span>
             <span className="kv-v" style={vault.navIsStale ? { color: "var(--negative)" } : undefined}>
-              {vault.lastNavUpdate === 0 ? "never" : vault.navIsStale ? "stale" : `${Math.max(1, Math.round(vault.navAgeSeconds / 60))} min ago`}
+              {vault.lastNavUpdate === 0 ? "not yet" : vault.navIsStale ? "overdue — deposits paused" : `${Math.max(1, Math.round(vault.navAgeSeconds / 60))} min ago`}
             </span>
           </div>
         </div>

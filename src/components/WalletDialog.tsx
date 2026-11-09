@@ -11,7 +11,7 @@ import { CHAINS, EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain
 import { useCredits } from "@/lib/creditsClient";
 
 export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { portfolio, walletProviderId, walletGuarantee } = useCovar();
+  const { portfolio, walletProviderId } = useCovar();
   const [copied, setCopied] = useState(false);
   const auth = useAuth();
   const credits = useCredits();
@@ -70,16 +70,26 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
   return (
     <Modal open={open} onClose={onClose} title="Connected wallet" subtitle={isEvm ? "Your browser wallet" : "Development session wallet"}>
       <div className="stack gap-16">
-        <div className="notice notice-warn">
-          <div>
-            <strong>No private keys are held by this build.</strong>
-            <div style={{ marginTop: 2 }}>
-              Provider: <span className="mono">{walletProviderId ?? getWalletProvider().id}</span> —{" "}
-              {walletGuarantee ?? "connect to see exactly what the connection proves."} Wallet signing, contract calls and
-              gas flows run against Robinhood Chain testnet (46630) once contracts are deployed.
+        {isEvm ? (
+          <div className="notice">
+            <div>
+              <strong>Covar never holds your private keys.</strong>
+              <div style={{ marginTop: 2 }}>
+                Signing in is a free signature — no gas, no transaction. Deposits, withdrawals and credit top-ups are
+                transactions you review and approve in your own wallet on {CHAINS[EXPECTED_CHAIN_ID].name}.
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="notice notice-warn">
+            <div>
+              <strong>Demo wallet.</strong>
+              <div style={{ marginTop: 2 }}>
+                This is a practice identity that only exists in this browser. Nothing is signed and no real funds are involved.
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="panel stack gap-8" style={{ padding: 14 }} data-testid="siwe-panel">
           <div className="row between gap-8">
@@ -135,14 +145,15 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
           )}
         </div>
 
-        <div className="panel" style={{ padding: 14 }}>
-          <span className="tiny">Provider selection</span>
-          <p className="tiny" style={{ margin: "4px 0 0" }}>
-            Set <span className="mono">NEXT_PUBLIC_WALLET_PROVIDER</span> to <span className="mono">session</span>{" "}
-            (default, proves nothing), <span className="mono">evm</span> (injected wallet, account access only — no
-            signature) or <span className="mono">privy</span> (the reference&rsquo;s provider; not shipped in this build).
-          </p>
-        </div>
+        {process.env.NODE_ENV !== "production" && !isEvm && (
+          <div className="panel" style={{ padding: 14 }}>
+            <span className="tiny">Developer note</span>
+            <p className="tiny" style={{ margin: "4px 0 0" }}>
+              Set <span className="mono">NEXT_PUBLIC_WALLET_PROVIDER=evm</span> to use a real browser wallet (MetaMask, Rabby) with
+              Sign-In with Ethereum.
+            </p>
+          </div>
+        )}
 
         <div className="panel" style={{ padding: 14 }}>
           <div className="row between gap-12">
@@ -175,7 +186,7 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
                   : chainUsdg.v !== null
                     ? `${formatUnits(chainUsdg.v, 6, 2)} USDG`
                     : chainUsdg.err
-                      ? "unreadable"
+                      ? "Couldn't load"
                       : "…"}
             </div>
           </div>
@@ -187,8 +198,8 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
 
         {isEvm ? (
           <p className="small">
-            USDG balance is read from {CHAINS[EXPECTED_CHAIN_ID].name} for this address. Deposits and withdrawals go through the{" "}
-            <strong>Invest · on-chain</strong> panel and are signed in your own wallet.
+            Your USDG balance is read live from {CHAINS[EXPECTED_CHAIN_ID].name}. Deposit and withdraw from{" "}
+            <strong>My money</strong>; every transaction is approved in your own wallet.
           </p>
         ) : (
           <p className="small">

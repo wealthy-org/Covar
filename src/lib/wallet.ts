@@ -62,22 +62,22 @@ class SessionWallet implements WalletProvider {
 
 class InjectedEvmWallet implements WalletProvider {
   id = "evm";
-  label = "Injected wallet (MetaMask-class)";
+  label = "Browser wallet (MetaMask, Rabby…)";
   private conn: WalletConnection | null = null;
   isAvailable() {
     return ethereum() !== null;
   }
   async connect(): Promise<WalletConnection> {
     const eth = ethereum();
-    if (!eth) throw new Error("No injected wallet found. Install an EIP-1193 wallet extension and retry.");
+    if (!eth) throw new Error("No wallet found in this browser. Install MetaMask or Rabby, then reload the page.");
     const accounts: string[] = await eth.request({ method: "eth_requestAccounts" });
     const address = accounts?.[0];
-    if (!address) throw new Error("The wallet returned no account.");
+    if (!address) throw new Error("Your wallet didn't share an account. Unlock it, choose an account and try again.");
     this.conn = {
       address,
       providerId: this.id,
       providerLabel: this.label,
-      guarantee: "Account access granted by the wallet (eth_requestAccounts). No message was signed — ownership is asserted, not proven.",
+      guarantee: "Wallet connected. Sign in with a free signature to prove it is yours and keep your data across devices.",
     };
     return this.conn;
   }

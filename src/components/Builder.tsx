@@ -104,10 +104,10 @@ export function Builder() {
             data.engine === "model"
               ? `${data.providerLabel}${data.credits ? ` · charged $${data.credits.chargedUsd.toFixed(4)} of credits (balance $${data.credits.balanceUsd.toFixed(4)})` : ""}`
               : data.engine === "rules-fallback"
-                ? `rules parser (model failed${data.credits ? `; provider usage still billed $${data.credits.chargedUsd.toFixed(4)}` : ""})${data.note ? `. ${data.note.replace(/; the deterministic rules parser produced this draft instead\.$/, "").replace(/^Model call failed \((.*)\)$/, "Reason: $1")}` : ""}`
+                ? `free rules parser — the AI model couldn't answer (${friendlyModelFailure(data.note)})${data.credits ? `; the provider still billed $${data.credits.chargedUsd.toFixed(4)}` : "; no credits charged"}`
                 : data.engine === "rules-credits"
-                  ? `rules parser, free (${data.note ?? "no Copilot credits"})`
-                  : "rules parser — no model key configured";
+                  ? `free rules parser (${data.note ?? "no Copilot credits"})`
+                  : "free rules parser — no AI model is set up on this server";
         }
       } catch {
         /* route unreachable — fall through to the local parser */
@@ -716,4 +716,17 @@ export function Builder() {
       </Modal>
     </div>
   );
+}
+
+/** Why the AI model failed, in words a user understands (the raw reason is logged to the console). */
+function friendlyModelFailure(note?: string | null): string {
+  const why = (note ?? "").replace(/; the deterministic rules parser produced this draft instead\.$/, "").replace(/^Model call failed \((.*)\)$/, "$1");
+  if (why) console.info("[copilot] model failure:", why);
+  if (/\b401\b|\b403\b|api key|unauthori[sz]ed|invalid.*key/i.test(why)) return "the AI service key isn't valid — the site admin needs to fix it";
+  if (/\b402\b|balance|quota|billing|credit/i.test(why)) return "the AI service account is out of balance";
+  if (/\b429\b|rate limit|too many/i.test(why)) return "the AI service is busy right now — try again in a minute";
+  if (/timeout|timed out|abort/i.test(why)) return "the AI service took too long to reply";
+  if (/\b5\d\d\b|unavailable|overloaded|bad gateway/i.test(why)) return "the AI service is temporarily down";
+  if (/json|parse|schema|invalid output/i.test(why)) return "the AI reply wasn't usable";
+  return "temporary problem with the AI service";
 }

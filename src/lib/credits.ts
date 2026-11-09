@@ -192,17 +192,17 @@ const topicAddr = (t: string | undefined) => (t ? `0x${t.slice(26)}`.toLowerCase
 export async function creditTopup(ownerIn: string, txHashIn: string, cfg: TopupConfig = topupConfig()) {
   const owner = ownerIn.toLowerCase();
   const txHash = txHashIn.trim().toLowerCase();
-  if (!/^0x[0-9a-f]{64}$/.test(txHash)) throw new TopupError("Not a transaction hash.");
-  if (!cfg.treasury || !cfg.usdg || !cfg.rpc) throw new TopupError("Credit top-ups are not configured on this server (CREDITS_TREASURY_ADDRESS / USDG / RPC).", 503);
+  if (!/^0x[0-9a-f]{64}$/.test(txHash)) throw new TopupError("That doesn't look like a transaction ID. Copy the full transaction hash (0x…) and try again.");
+  if (!cfg.treasury || !cfg.usdg || !cfg.rpc) throw new TopupError("Top-ups aren't available on this server yet. Your USDG has not been touched.", 503); // admin: set CREDITS_TREASURY_ADDRESS / USDG / RPC
 
   const rpcChain = Number(BigInt(await rpc<string>(cfg.rpc, "eth_chainId", [])));
-  if (rpcChain !== cfg.chainId) throw new TopupError(`Server RPC is on chain ${rpcChain}, expected ${cfg.chainId}.`, 503);
+  if (rpcChain !== cfg.chainId) throw new TopupError("Top-ups are temporarily unavailable (the server is connected to the wrong network). Your USDG is safe — try again later.", 503); // admin: server RPC chain mismatch
   const receipt = await rpc<{ status: string; blockNumber: string; logs: { address: string; topics: string[]; data: string; logIndex: string }[] } | null>(cfg.rpc, "eth_getTransactionReceipt", [txHash]);
-  if (!receipt) throw new TopupError("Transaction not found or not mined yet. Try again in a few seconds.", 409);
-  if (receipt.status !== "0x1") throw new TopupError("That transaction reverted. No USDG moved.");
+  if (!receipt) throw new TopupError("Waiting for your transfer to appear on the network…", 409);
+  if (receipt.status !== "0x1") throw new TopupError("That transfer failed on the network, so no USDG moved and nothing was credited.");
   const head = Number(BigInt(await rpc<string>(cfg.rpc, "eth_blockNumber", [])));
   const confirmations = head - Number(BigInt(receipt.blockNumber)) + 1;
-  if (confirmations < cfg.minConfirmations) throw new TopupError(`Waiting for confirmations (${confirmations}/${cfg.minConfirmations}).`, 409);
+  if (confirmations < cfg.minConfirmations) throw new TopupError(`Waiting for network confirmations (${confirmations}/${cfg.minConfirmations})…`, 409);
 
   const transfers = receipt.logs.filter(
     (l) =>
@@ -211,7 +211,7 @@ export async function creditTopup(ownerIn: string, txHashIn: string, cfg: TopupC
       topicAddr(l.topics[1]) === owner &&
       topicAddr(l.topics[2]) === cfg.treasury!.toLowerCase(),
   );
-  if (!transfers.length) throw new TopupError("No USDG transfer from your signed-in wallet to the credits treasury in that transaction.");
+  if (!transfers.length) throw new TopupError("This transaction isn't a USDG transfer from your signed-in wallet to the Copilot credits address, so it can't be credited.");
 
   let credited = 0n;
   let already = 0n;

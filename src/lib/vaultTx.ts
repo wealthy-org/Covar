@@ -59,28 +59,39 @@ export const SEL = {
   availableLiquidity: "0x74375359",
 } as const;
 
-/** Custom errors of CovarVault, with a plain explanation of what to do. */
+/**
+ * Custom errors of CovarVault and of the USDG token, each with a plain-language
+ * explanation an investor understands. `name` stays for logs/tests only; the UI
+ * shows `hint`.
+ */
 export const VAULT_ERRORS: Record<string, { name: string; hint: string }> = {
-  "0x30cd7471": { name: "NotOwner", hint: "Only the owner (admin wallet A) can do this. Switch account in your wallet." },
-  "0x7c214f04": { name: "NotOperator", hint: "Only the operator (wallet B) or the owner can do this. Switch account in your wallet." },
-  "0xd4bd01c5": { name: "Paused_", hint: "Deposits are paused by the owner. Claims still work." },
-  "0x2ec0c96a": { name: "CloseOnly_", hint: "The vault is in close-only mode. Withdrawals and claims still work." },
-  "0x0c5d582f": { name: "StaleNav", hint: "No NAV report in the last 6 hours. The operator must call reportNav first." },
-  "0xa31eeef6": { name: "NavJumpTooLarge", hint: "The new NAV differs more than 20% from the last report (circuit breaker)." },
-  "0x1f2a2005": { name: "ZeroAmount", hint: "Amount is zero, or the fee would consume the whole amount." },
-  "0x860b82a9": { name: "BelowMinimum", hint: "Below the minimum deposit (10 USDG)." },
-  "0x39996567": { name: "InsufficientShares", hint: "This wallet does not hold that many vault shares." },
-  "0xcffd93ac": { name: "NoRequest", hint: "Nothing to claim yet — the withdrawal must be settled by the operator first." },
-  "0xde4168ba": { name: "WrongState", hint: "The withdrawal request is not in the right step for this action." },
-  "0x90b8ec18": { name: "TransferFailed", hint: "Token transfer failed — usually missing approval, low balance, or the vault does not hold the funds." },
+  "0x30cd7471": { name: "NotOwner", hint: "Only the vault owner (admin wallet) can do this. Switch to that account in your wallet." },
+  "0x7c214f04": { name: "NotOperator", hint: "Only the vault operator or owner can do this. Switch to that account in your wallet." },
+  "0xd4bd01c5": { name: "Paused_", hint: "Deposits are paused for now. Withdrawals and claims still work." },
+  "0x2ec0c96a": { name: "CloseOnly_", hint: "The vault is winding down positions, so new deposits are closed. Withdrawals and claims still work." },
+  "0x0c5d582f": {
+    name: "StaleNav",
+    hint: "Deposits are paused for a moment: the vault's share price has not been updated in the last 6 hours. It refreshes automatically — please try again shortly.",
+  },
+  "0xa31eeef6": { name: "NavJumpTooLarge", hint: "The new share price differs too much from the last one, so the safety brake stopped it. It needs a manual review." },
+  "0x1f2a2005": { name: "ZeroAmount", hint: "The amount is too small — after fees nothing would be left. Enter a larger amount." },
+  "0x860b82a9": { name: "BelowMinimum", hint: "That is below the minimum deposit. Enter a larger amount." },
+  "0x39996567": { name: "InsufficientShares", hint: "You don't hold that many vault shares. Enter a smaller number." },
+  "0xcffd93ac": { name: "NoRequest", hint: "There is nothing to claim yet. Your withdrawal becomes claimable once it is settled." },
+  "0xde4168ba": { name: "WrongState", hint: "Your withdrawal is not at this step yet. Refresh the page to see its current status." },
+  "0x90b8ec18": { name: "TransferFailed", hint: "The USDG transfer did not go through — usually not enough USDG or a missing approval. Check your balance and try again." },
   // v2
-  "0xa4875a49": { name: "CapExceeded", hint: "This deposit would push the vault over its TVL cap. Deposit less, or the owner raises the cap." },
-  "0xc56d46d3": { name: "DepositTooLarge", hint: "Above the per-deposit cap. Split it into smaller deposits." },
+  "0xa4875a49": { name: "CapExceeded", hint: "The vault is close to its size limit, so this deposit doesn't fit. Try a smaller amount." },
+  "0xc56d46d3": { name: "DepositTooLarge", hint: "That is above the per-deposit limit. Split it into smaller deposits." },
   "0xbb55fd27": {
     name: "InsufficientLiquidity",
-    hint: "The vault's free USDG (balance minus settled-but-unclaimed withdrawals) is too low. Return capital from the venue first.",
+    hint: "The vault doesn't have enough free USDG on hand right now. The operator is bringing funds back; please try again later.",
   },
-  "0xc56b549b": { name: "NoTradingAccount", hint: "The owner has not set a trading account yet." },
+  "0xc56b549b": { name: "NoTradingAccount", hint: "The vault's trading account is not set up yet." },
+  // USDG token (Robinhood Chain) and standard OpenZeppelin ERC-20 errors
+  "0x356680b7": { name: "InsufficientFunds", hint: "Your wallet doesn't have enough USDG for this. Add USDG to this wallet or enter a smaller amount." },
+  "0xe450d38c": { name: "ERC20InsufficientBalance", hint: "Your wallet doesn't have enough USDG for this. Add USDG to this wallet or enter a smaller amount." },
+  "0xfb8f41b2": { name: "ERC20InsufficientAllowance", hint: "The vault isn't approved to use that much of your USDG yet. Approve first, then try again." },
 };
 
 export const REQUEST_STATES = ["None", "ClosingPositions", "Settling", "Claimable", "Claimed"] as const;
@@ -101,9 +112,9 @@ export const isAddress = (a: string) => /^0x[0-9a-fA-F]{40}$/.test(a.trim());
 /** "12.5" → 12_500_000n for 6 decimals. Throws on malformed input. */
 export function parseUnits(input: string, decimals = 6): bigint {
   const s = input.trim().replace(/,/g, "");
-  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error(`"${input}" is not a valid amount`);
+  if (!/^\d+(\.\d+)?$/.test(s)) throw new Error("Enter an amount as a number, for example 25 or 12.5.");
   const [whole, frac = ""] = s.split(".");
-  if (frac.length > decimals) throw new Error(`At most ${decimals} decimals`);
+  if (frac.length > decimals) throw new Error(`Use at most ${decimals} digits after the decimal point.`);
   return BigInt(whole) * 10n ** BigInt(decimals) + BigInt((frac + "0".repeat(decimals)).slice(0, decimals) || "0");
 }
 
@@ -280,30 +291,63 @@ function revertData(e: unknown): string | null {
   return walk(e);
 }
 
-/** Human explanation for a failed call/transaction. */
+/** Error text that means "the network/RPC could not be reached", not "the transaction is invalid". */
+const NETWORK_RE = /failed to fetch|fetch failed|networkerror|network error|load failed|timed out|timeout|econn|enotfound|socket hang up|http 5\d\d|http 429|rate limit|too many requests|rpc request failed|could not coalesce|missing response|bad gateway|service unavailable/i;
+
+/**
+ * Plain-language explanation for a failed call or transaction. Never returns
+ * raw RPC dumps, request bodies, hex or stack text: those go to the console for
+ * debugging, the person sees what happened and what to do next.
+ */
 export function explainError(e: unknown): string {
   const anyE = e as any;
-  if (anyE?.code === 4001 || /user (rejected|denied)/i.test(anyE?.message ?? "")) return "Cancelled in the wallet — nothing was sent.";
+  const raw = String(anyE?.shortMessage ?? anyE?.message ?? e ?? "");
+  if (anyE?.code === 4001 || anyE?.code === "ACTION_REJECTED" || /user (rejected|denied|cancel)|rejected the request|request rejected/i.test(raw))
+    return "You cancelled this in your wallet. Nothing was sent.";
   if (isStaleExtension(e)) return STALE_WALLET_MSG;
+  if (anyE?.code === -32002 || /already pending|request of type .* already pending/i.test(raw))
+    return "Your wallet already has a request waiting. Open the wallet extension to approve or reject it.";
+  if (anyE?.code === 4100 || /not authorized|unauthorized|locked/i.test(raw)) return "Your wallet is locked or hasn't allowed this site yet. Unlock it and try again.";
+  if (anyE?.code === 4902 || /unrecognized chain|unknown chain/i.test(raw)) return "Your wallet doesn't know Robinhood Chain yet. Approve “Add network” in your wallet, then try again.";
+
   const data = revertData(e);
   if (data) {
     const sel = data.slice(0, 10).toLowerCase();
     const known = VAULT_ERRORS[sel];
-    if (known) return `${known.name} — ${known.hint}`;
+    if (known) return known.hint;
     if (sel === "0x08c379a0") {
       try {
         const body = strip(data).slice(8);
         const len = Number(BigInt("0x" + body.slice(64, 128)));
         const bytes = body.slice(128, 128 + len * 2).match(/../g)?.map((b) => parseInt(b, 16)) ?? [];
-        return `Reverted: ${new TextDecoder().decode(new Uint8Array(bytes))}`;
+        const reason = new TextDecoder().decode(new Uint8Array(bytes));
+        if (/exceeds balance|insufficient balance/i.test(reason)) return VAULT_ERRORS["0x356680b7"].hint;
+        if (/allowance/i.test(reason)) return VAULT_ERRORS["0xfb8f41b2"].hint;
+        if (reason && reason.length < 120 && !/0x[0-9a-f]{8}/i.test(reason)) return `The network refused this transaction: “${reason}”. Nothing was sent.`;
       } catch {
         /* fall through */
       }
     }
+    console.warn("[covar] unrecognised revert", data, e);
+    return "This transaction would fail, so it was not sent and nothing left your wallet. Refresh the page and try again; if it keeps happening, contact support.";
   }
-  const msg = String(anyE?.shortMessage ?? anyE?.message ?? e);
-  if (/insufficient funds/i.test(msg)) return "Not enough ETH for gas in this wallet — claim from the Robinhood testnet faucet or send a little ETH.";
-  return msg.length > 220 ? msg.slice(0, 220) + "…" : msg;
+
+  if (/insufficient funds|gas required exceeds|intrinsic gas/i.test(raw))
+    return "Not enough ETH in this wallet to pay the network fee (gas). Add a little Robinhood Chain testnet ETH from the faucet, then try again.";
+  if (/nonce too low|replacement transaction underpriced|already known/i.test(raw))
+    return "Your wallet has an earlier transaction still in progress. Wait for it to finish (or reset the wallet's activity), then try again.";
+  if (/execution reverted|revert/i.test(raw)) return "This transaction would fail, so it was not sent and nothing left your wallet. Check the amount and your balance, then try again.";
+  if (/wallet is on chain|wrong network|chain mismatch|switch it to/i.test(raw)) return "Your wallet is on a different network. Switch it to Robinhood Chain and try again.";
+  if (/no browser wallet/i.test(raw)) return "No wallet found in this browser. Install MetaMask or Rabby, then reload the page.";
+  if (NETWORK_RE.test(raw)) {
+    console.warn("[covar] network error", e);
+    return "Couldn't reach Robinhood Chain right now. Check your internet connection (a VPN can help if the network is blocked where you are) and try again in a moment.";
+  }
+  // Already a friendly sentence written by this app? Keep it; anything that looks like a dump is replaced.
+  const looksRaw = raw.length > 180 || /[{}[\]]|0x[0-9a-f]{16,}|request body|stack|version:|details:/i.test(raw);
+  if (raw && !looksRaw) return raw;
+  console.warn("[covar] unexplained error", e);
+  return "Something went wrong and nothing was sent. Please try again in a moment.";
 }
 
 // --------------------------------------------------------------------- wallet
@@ -340,7 +384,7 @@ export async function sendTx(opts: { from: string; to: string; data: string; cha
   const eth = injected();
   if (!eth) throw new Error("No browser wallet found.");
   const walletChain = Number(BigInt(await eth.request({ method: "eth_chainId" })));
-  if (walletChain !== opts.chain) throw new Error(`Wallet is on chain ${walletChain}; switch it to ${opts.chain} first.`);
+  if (walletChain !== opts.chain) throw new Error(`Your wallet is on a different network. Switch it to ${CHAINS[opts.chain]?.name ?? "Robinhood Chain"} and try again.`);
   try {
     await ethCall(opts.to, opts.data, opts.chain, opts.from);
   } catch (e) {
@@ -361,5 +405,5 @@ export async function waitForReceipt(hash: string, timeoutMs = 120_000): Promise
     if (r) return { ok: r.status === "0x1", blockNumber: Number(BigInt(r.blockNumber)) };
     await new Promise((res) => setTimeout(res, 1500));
   }
-  throw new Error("No receipt after 2 minutes — check the explorer link.");
+  throw new Error("The transaction is taking longer than usual to confirm. Check the explorer link — it may still go through.");
 }

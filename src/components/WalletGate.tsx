@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { actions, useCovar } from "@/lib/store";
 import { PROVIDER_CHOICES, getWalletProvider } from "@/lib/wallet";
@@ -58,7 +57,7 @@ export function WalletGate({
           onClick={() => {
             setErr(null);
             void actions.connectWallet().then((r) => {
-              if (!r.ok) setErr(r.error ?? "Connection failed");
+              if (!r.ok) setErr(r.error ?? "Please try again.");
             });
           }}
         >
@@ -68,31 +67,30 @@ export function WalletGate({
         {err && (
           <div className="notice notice-warn">
             <div>
-              <strong>Connection failed</strong>
+              <strong>Couldn&apos;t connect your wallet</strong>
               <div style={{ marginTop: 2 }}>{err}</div>
             </div>
           </div>
         )}
 
-        <div className="stack gap-6">
-          <span className="tiny">
-            Provider: <span className="mono">{provider.id}</span> ({provider.label})
-          </span>
-          {PROVIDER_CHOICES.filter((c) => c.id !== provider.id).map((c) => (
-            <span key={c.id} className="tiny faint">
-              Available as alternative: {c.label} — set NEXT_PUBLIC_WALLET_PROVIDER={c.id}
+        {provider.id === "evm" ? (
+          <p className="tiny" style={{ lineHeight: 1.6, margin: 0 }}>
+            Works with MetaMask, Rabby and other browser wallets. Covar never holds your private keys — every deposit,
+            withdrawal and top-up is approved by you in your own wallet.
+          </p>
+        ) : (
+          <p className="tiny" style={{ lineHeight: 1.6, margin: 0 }}>
+            Demo mode: connecting starts a practice wallet stored only in this browser. No real funds and nothing is signed.
+          </p>
+        )}
+        {process.env.NODE_ENV !== "production" && (
+          <div className="stack gap-6">
+            <span className="tiny faint">
+              Developer: wallet mode <span className="mono">{provider.id}</span>. Other modes:{" "}
+              {PROVIDER_CHOICES.filter((c) => c.id !== provider.id).map((c) => `NEXT_PUBLIC_WALLET_PROVIDER=${c.id}`).join(", ")}.
             </span>
-          ))}
-        </div>
-
-        <p className="tiny mono" style={{ lineHeight: 1.6 }}>
-          No keys are held by this build: connecting starts a <strong>session wallet</strong> (simulated, stored locally)
-          so the screens can be reviewed. Real signing is the execution plane&apos;s job — see{" "}
-          <Link href="/execution" style={{ textDecoration: "underline" }}>
-            /execution
-          </Link>
-          .
-        </p>
+          </div>
+        )}
       </div>
     </div>
   );

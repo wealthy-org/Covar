@@ -5,6 +5,7 @@ import { useSyncExternalStore } from "react";
 import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, NotificationKind, PracticeRun, Strategy } from "./types";
 import { vaultFeed } from "./vaultAgent";
 import { getWalletProvider } from "./wallet";
+import { explainError } from "./vaultTx";
 import { seedState } from "./seed";
 import { PLATFORM_LIMITS } from "./strategy";
 
@@ -230,7 +231,7 @@ export const actions = {
         portfolio: { ...state.portfolio, wallet: conn.address },
       };
     } catch (err) {
-      return { ok: false, error: (err as Error).message };
+      return { ok: false, error: explainError(err) };
     }
     persist();
     emit();
@@ -252,7 +253,7 @@ export const actions = {
       owner,
       walletConnected: true,
       walletProviderId: "evm",
-      walletGuarantee: "Ownership proven by a Sign-In with Ethereum signature (EIP-4361). No transaction, no gas.",
+      walletGuarantee: "Signed in with a free signature that proves this wallet is yours. No transaction, no gas.",
       portfolio: { ...s.portfolio, wallet: address },
     });
     if (state.owner === owner && isDirty()) {

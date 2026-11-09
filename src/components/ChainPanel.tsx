@@ -13,6 +13,7 @@ import {
   type VaultState,
 } from "@/lib/chain";
 import { cx, shortAddr, timeAgo, usd } from "@/lib/format";
+import { explainError } from "@/lib/vaultTx";
 
 export function useChain() {
   const [status, setStatus] = useState<ChainStatus | null>(null);
@@ -30,7 +31,7 @@ export function useChain() {
         setVaultError(null);
       } catch (e) {
         setVault(null);
-        setVaultError((e as Error).message);
+        setVaultError(explainError(e));
       }
     } else {
       setVault(null);
@@ -146,9 +147,9 @@ export function OnChainVaultCard({ showLinks = true }: { showLinks?: boolean }) 
       <div className="panel stack gap-8" style={{ padding: 14 }}>
         <div className="row between">
           <span className="small strong">Vault settlement</span>
-          <span className="badge badge-red">Read failed</span>
+          <span className="badge badge-red">Unavailable</span>
         </div>
-        <span className="tiny">{vaultError}</span>
+        <span className="tiny">Couldn&apos;t load the vault right now. {vaultError}</span>
         <span className="tiny mono">{address}</span>
       </div>
     );
@@ -191,13 +192,14 @@ export function OnChainVaultCard({ showLinks = true }: { showLinks?: boolean }) 
         <span className="tiny">Last NAV report</span>
         <span className={cx("small", vault.navIsStale ? "neg" : "")}>
           {vault.lastNavUpdate ? timeAgo(new Date(vault.lastNavUpdate * 1000).toISOString()) : "never"}
-          {vault.navIsStale ? " · stale → deposits rejected" : ""}
+          {vault.navIsStale ? " · overdue" : ""}
         </span>
       </div>
       <div className="row gap-6 wrap">
         {vault.depositsPaused && <span className="badge badge-amber">Deposits paused</span>}
         {vault.closeOnly && <span className="badge badge-amber">Close-only</span>}
-        {!vault.depositsPaused && !vault.closeOnly && <span className="badge badge-green">Deposits open</span>}
+        {!vault.depositsPaused && !vault.closeOnly && vault.navIsStale && <span className="badge badge-amber">Deposits paused until the next price update</span>}
+        {!vault.depositsPaused && !vault.closeOnly && !vault.navIsStale && <span className="badge badge-green">Deposits open</span>}
         <span className="badge badge-outline">
           {chain.isMainnet ? "Mainnet" : EXPECTED_CHAIN_ID === 31337 ? "Local rehearsal" : "Testnet"}
         </span>

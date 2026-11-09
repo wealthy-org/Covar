@@ -1056,3 +1056,9 @@ html.rv [data-rv="wait"] .fx-draw, html.rv [data-rv="wait"] .fx-area { animation
 html.rv [data-rv="wait"] .fx-draw { stroke-dashoffset: 1; }
 html.rv [data-rv="wait"] .fx-area { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .fx-draw, .fx-area { animation: none !important; stroke-dashoffset: 0 !important; } }
+
+/* My money: action cards side by side share one height; info row cards align */
+.portfolio-actions > *, .portfolio-info > * { min-width: 0; }
+.portfolio-actions-cell { display: flex; }
+.portfolio-actions-cell > * { flex: 1; }
+.portfolio-info > .panel { padding: 18px !important; }

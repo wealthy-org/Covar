@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { actions, useCovar } from "@/lib/store";
 import { cx, dateTime, shortAddr, usd } from "@/lib/format";
 import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
@@ -10,6 +10,32 @@ import { InvestPanel } from "@/components/InvestPanel";
 import { WalletGate } from "@/components/WalletGate";
 import CreditsPanel from "@/components/CreditsPanel";
 import { useCredits } from "@/lib/creditsClient";
+import { EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
+import { formatUnits, readAccount } from "@/lib/vaultTx";
+import { getWalletProvider } from "@/lib/wallet";
+
+/** Real wallet + Covar vault balances from the chain (browser-wallet mode only). */
+function useOnChainBalances(wallet: string, enabled: boolean) {
+  const [v, setV] = useState<{ usdg: number; vault: number } | null>(null);
+  useEffect(() => {
+    if (!enabled || !VAULT_ADDRESS || !wallet?.startsWith("0x")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const vault = await readVault(VAULT_ADDRESS);
+        const a = await readAccount(VAULT_ADDRESS, vault.asset, wallet, EXPECTED_CHAIN_ID);
+        const toNum = (x: bigint) => Number(formatUnits(x, 6, 6).replace(/,/g, ""));
+        if (!cancelled) setV({ usdg: toNum(a.usdgBalance), vault: toNum((a.shares * a.navWad) / 10n ** 18n) });
+      } catch {
+        if (!cancelled) setV(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wallet, enabled]);
+  return v;
+}
 
 export default function PortfolioPage() {
   return (
@@ -28,7 +54,7 @@ export default function PortfolioPage() {
 }
 
 function PortfolioInner() {
-  const { agents, portfolio } = useCovar();
+  const { agents, portfolio, walletProviderId } = useCovar();
   const { toast, node } = useToast();
   const credits = useCredits();
   const [tab, setTab] = useState<"all" | "flows" | "fees" | "pending">("all");
@@ -40,8 +66,14 @@ function PortfolioInner() {
     return { ...h, agent, nav, value, pnl: value - h.costBasisUsd };
   });
 
-  const vaultValue = rows.reduce((a, b) => a + b.value, 0);
-  const totalValue = vaultValue + portfolio.cashUsd;
+  const isEvm = (walletProviderId ?? getWalletProvider().id) === "evm" && !!VAULT_ADDRESS;
+  const chainBal = useOnChainBalances(portfolio.wallet, isEvm);
+  const practiceVault = rows.reduce((a, b) => a + b.value, 0);
+  // Browser-wallet mode: the headline numbers are the real on-chain ones; practice holdings stay in their labelled rows.
+  const vaultValue = isEvm ? (chainBal?.vault ?? 0) : practiceVault;
+  const walletUsdg = isEvm ? (chainBal?.usdg ?? 0) : portfolio.cashUsd;
+  const totalValue = vaultValue + walletUsdg;
+  const loadingChain = isEvm && chainBal === null;
   const pending = rows.filter((r) => r.requestedWithdrawal);
   const costBasis = rows.reduce((a, b) => a + b.costBasisUsd, 0);
 
@@ -76,25 +108,25 @@ function PortfolioInner() {
       <div className="grid-4">
         <div className="card card-pad">
           <span className="tiny">Total value</span>
-          <div className="stat-value">{usd(totalValue)}</div>
-          <span className="tiny">wallet + vault shares</span>
+          <div className="stat-value">{loadingChain ? "…" : usd(totalValue)}</div>
+          <span className="tiny">{isEvm ? "wallet + vault, on-chain" : "wallet + vault shares (practice)"}</span>
         </div>
         <div className="card card-pad">
           <span className="tiny">Wallet USDG</span>
-          <div className="stat-value">{usd(portfolio.cashUsd)}</div>
-          <span className="tiny">available to deposit</span>
+          <div className="stat-value">{loadingChain ? "…" : usd(walletUsdg)}</div>
+          <span className="tiny">{isEvm ? "in your wallet, ready to deposit" : "practice balance"}</span>
         </div>
         <div className="card card-pad">
-          <span className="tiny">Vault positions</span>
-          <div className="stat-value">{usd(vaultValue)}</div>
-          <span className="tiny">{costBasis ? `${((vaultValue / costBasis - 1) * 100).toFixed(2)}% vs cost` : "no positions"}</span>
+          <span className="tiny">In the vault</span>
+          <div className="stat-value">{loadingChain ? "…" : usd(vaultValue)}</div>
+          <span className="tiny">
+            {isEvm ? (vaultValue > 0 ? "your Covar vault shares" : "no deposit yet") : costBasis ? `${((practiceVault / costBasis - 1) * 100).toFixed(2)}% vs cost` : "no positions"}
+          </span>
         </div>
         <div className="card card-pad">
           <span className="tiny">Copilot credits</span>
           <div className="stat-value">{credits.balanceUsd === null ? "—" : usd(credits.balanceUsd)}</div>
-          <a className="btn btn-soft btn-sm" style={{ marginTop: 6 }} href="#credits">
-            {credits.signedIn ? "Top up" : "Sign in to use"}
-          </a>
+          <span className="tiny">{credits.signedIn ? "prepaid AI usage" : "sign in to use"}</span>
         </div>
       </div>
 
@@ -107,6 +139,14 @@ function PortfolioInner() {
           </div>
         </div>
       )}
+
+      {/* ------------------------------- actions ------------------------------- */}
+      <div className="grid-2 portfolio-actions" style={{ alignItems: "stretch" }}>
+        <InvestPanel />
+        <div id="credits" className="portfolio-actions-cell">
+          <CreditsPanel />
+        </div>
+      </div>
 
       {/* ------------------------------- holdings ------------------------------- */}
       <div className="card stack">
@@ -211,7 +251,7 @@ function PortfolioInner() {
               </button>
             ))}
           </div>
-          <span className="tiny">ledger is append-only within a session</span>
+          <span className="tiny">newest first · entries are never edited</span>
         </div>
         <div className="table-wrap">
           <table className="table table-min">
@@ -265,39 +305,34 @@ function PortfolioInner() {
         </div>
       </div>
 
-      <div className="grid-2" style={{ alignItems: "start" }}>
+      {/* ------------------------- vault facts & how to read this ------------------------- */}
+      <div className="grid-3 portfolio-info" style={{ alignItems: "stretch" }}>
+        <OnChainVaultCard />
         <div className="card card-pad stack gap-8">
           <span className="small strong">What counts as what</span>
-          <div className="stack gap-6">
+          <div className="stack gap-8">
             {[
-              ["Deposits / withdrawals", "Capital flows — never shown as profit or loss."],
-              ["Vault NAV growth", "Your share value change, from the on-chain NAV record."],
-              ["Creator fees", "Charged on winning-trade profit only; not netted against losses."],
-              ["Copilot credits", "Service credits — a liability, not platform revenue."],
+              ["Deposits / withdrawals", "Moving your own money — never shown as profit or loss."],
+              ["Vault NAV growth", "The change in your share value, from the on-chain price record."],
+              ["Creator fees", "Charged on winning trades only; never netted against losses."],
+              ["Copilot credits", "Prepaid AI usage — held for you, not platform revenue."],
             ].map(([k, v]) => (
-              <div key={k} className="row between gap-12">
+              <div key={k} className="stack" style={{ gap: 1 }}>
                 <span className="tiny strong">{k}</span>
-                <span className="tiny" style={{ textAlign: "right" }}>{v}</span>
+                <span className="tiny">{v}</span>
               </div>
             ))}
           </div>
         </div>
-        <div className="stack gap-12">
-          <InvestPanel />
-          <div id="credits">
-            <CreditsPanel />
-          </div>
-          <OnChainVaultCard />
-          <div className="card card-pad stack gap-8">
-            <span className="small strong">Custody &amp; authority</span>
-            <p className="small">
-              Deposits, escrowed withdrawals and unused credits are liabilities, never revenue. The single owner wallet
-              holds admin authority with no multisig and no threshold delay — an accepted, documented risk.
-            </p>
-            <div className="row gap-12">
-              <Link href="/docs#custody" className="link-primary small">Custody docs →</Link>
-              <Link href="/chain" className="link-primary small">Chain status →</Link>
-            </div>
+        <div className="card card-pad stack gap-8">
+          <span className="small strong">Custody &amp; authority</span>
+          <p className="small" style={{ margin: 0 }}>
+            Deposits, pending withdrawals and unused credits belong to you, never to the platform. One owner wallet holds admin
+            rights, with no multisig or time delay yet — a known, documented risk.
+          </p>
+          <div className="row gap-12" style={{ marginTop: "auto" }}>
+            <Link href="/docs#custody" className="link-primary small">Custody docs →</Link>
+            <Link href="/chain" className="link-primary small">Chain status →</Link>
           </div>
         </div>
       </div>
