@@ -33,8 +33,10 @@ import { buildSummary, type IndexedEvent, type TransferOut } from "./summary";
  *   GET /health
  */
 
-// INDEXER_PORT, else the host's PORT (Railway/Render/Fly inject one), else 4016
-const PORT = Number(process.env.INDEXER_PORT || process.env.PORT || 4016);
+// On Railway/Render/Fly the platform's PORT wins (its router only reaches that
+// port); elsewhere INDEXER_PORT, else PORT, else 4016.
+const HOSTED = !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RENDER || process.env.FLY_APP_NAME);
+const PORT = Number((HOSTED && process.env.PORT) || process.env.INDEXER_PORT || process.env.PORT || 4016);
 function rpcUrl() {
   if (process.env.INDEXER_RPC_URL || process.env.RPC_URL) return (process.env.INDEXER_RPC_URL || process.env.RPC_URL)!;
   const chain = process.env.INDEXER_CHAIN || process.env.OPERATOR_CHAIN || "local";

@@ -18,7 +18,14 @@ const root = process.cwd();
 const env = resolve(root, ".env");
 const envLocal = resolve(root, ".env.local");
 
-if (existsSync(env) || existsSync(envLocal)) {
+// Hosted service platforms supply their own variables. Copying .env.example
+// there would inject dev defaults (e.g. INDEXER_PORT=4016 instead of the
+// platform's PORT, so the service never answers).
+const hosted = process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RENDER || process.env.FLY_APP_NAME;
+
+if (hosted) {
+  console.log("[setup-env] hosted platform detected — no .env created (use the platform's variables).");
+} else if (existsSync(env) || existsSync(envLocal)) {
   console.log("[setup-env] .env/.env.local already exists — left untouched.");
 } else {
   copyFileSync(resolve(root, ".env.example"), env);
