@@ -1062,3 +1062,52 @@ html.rv [data-rv="wait"] .fx-area { opacity: 0; }
 .portfolio-actions-cell { display: flex; }
 .portfolio-actions-cell > * { flex: 1; }
 .portfolio-info > .panel { padding: 18px !important; }
+
+/* ============================================================
+   Button hover — "lift + hard shadow" (owner pick, option B)
+   The button rises 2px up-left and leaves a square offset block
+   behind it; pressing drops it back flat. Square corners + mono
+   type make this the house style. Colours stay in the palette:
+   dark buttons cast cobalt, light buttons cast ink, semantic
+   buttons cast their own tone. Ghost buttons, tabs and segmented
+   toggles stay flat on purpose (they are navigation, not actions).
+   ============================================================ */
+.btn, .btn-ink, .btn-out, .nav-btn, .lp-btn, .lp-run, .announce-btn, .chip {
+  --lift-shadow: var(--ink);
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease,
+    transform 180ms var(--ease-out, cubic-bezier(0.2, 0.7, 0.2, 1)), box-shadow 180ms var(--ease-out, cubic-bezier(0.2, 0.7, 0.2, 1));
+}
+.btn-primary, .btn-ink, .nav-btn-ink, .nav-btn-wallet, .lp-btn, .nav .btn-primary.nav-btn, .cta-band .btn-primary { --lift-shadow: var(--primary); }
+.btn-soft { --lift-shadow: var(--primary); }
+.btn-danger { --lift-shadow: var(--negative); }
+
+@media (hover: hover) and (pointer: fine) {
+  :is(.btn-primary, .btn-secondary, .btn-soft, .btn-danger, .btn-ink, .btn-out, .nav-btn, .lp-btn, .announce-btn):hover:not(:disabled):not([aria-disabled="true"]) {
+    transform: translate(-2px, -2px);
+    box-shadow: 3px 3px 0 0 var(--lift-shadow);
+  }
+  /* light buttons get an ink outline so the block reads as one object */
+  :is(.btn-secondary, .btn-out, .nav-btn:not(.nav-btn-ink):not(.nav-btn-wallet):not(.btn-primary), .announce-btn):hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: var(--ink);
+  }
+  .btn-soft:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--primary); }
+  .btn-danger:hover:not(:disabled):not([aria-disabled="true"]) { border-color: var(--negative); }
+  /* small controls: a smaller step */
+  .lp-run:hover { transform: translate(-1px, -1px); box-shadow: 2px 2px 0 0 var(--ink); }
+  .chip:not([data-active="true"]):hover { transform: translate(-1px, -1px); box-shadow: 2px 2px 0 0 var(--ink); border-color: var(--ink); color: var(--ink); }
+  /* trailing arrows nudge forward */
+  :is(.btn, .btn-ink, .btn-out, .lp-btn) svg:last-child:not(:first-child) { transition: transform 200ms var(--ease-out, cubic-bezier(0.2, 0.7, 0.2, 1)); }
+  :is(.btn, .btn-ink, .btn-out, .lp-btn):hover:not(:disabled) svg:last-child:not(:first-child) { transform: translateX(2px); }
+}
+
+/* press: the button lands back on its shadow */
+:is(.btn, .btn-ink, .btn-out, .nav-btn, .lp-btn, .lp-run, .announce-btn, .chip):active:not(:disabled):not([aria-disabled="true"]) {
+  transform: translate(0, 0);
+  box-shadow: 0 0 0 0 var(--lift-shadow);
+  transition-duration: 60ms;
+}
+.btn-ghost:active:not(:disabled) { transform: translateY(1px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .btn-ink, .btn-out, .nav-btn, .lp-btn, .lp-run, .announce-btn, .chip { transform: none !important; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+}
