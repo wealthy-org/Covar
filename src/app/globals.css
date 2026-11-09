@@ -1111,3 +1111,32 @@ html.rv [data-rv="wait"] .fx-area { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .btn, .btn-ink, .btn-out, .nav-btn, .lp-btn, .lp-run, .announce-btn, .chip { transform: none !important; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
 }
+
+/* ------------------------------ Discover table ------------------------------ */
+.utab-count { margin-left: 7px; font-size: 9.5px; color: var(--muted-2); letter-spacing: 0.04em; }
+.utab[data-active="true"] .utab-count { color: var(--primary); }
+.discover-table .group-row td {
+  height: auto; padding: 14px 16px 10px; background: #fafbfd; border-top: 1px solid var(--border);
+  display: table-cell; cursor: default;
+}
+.discover-table tbody:first-of-type .group-row td { border-top: 0; }
+.discover-table .group-row:hover td { background: #fafbfd; }
+.discover-table .group-note { display: block; margin-top: 3px; font-size: 11px; line-height: 1.5; }
+
+/* provenance badges */
+.pill-onchain { color: #0b6b3c; border-color: #8fd9b0; background: #dcf7e8; font-weight: 600; }
+.pill-onchain .pill-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); animation: onchain-pulse 1.8s ease-out infinite; }
+@keyframes onchain-pulse { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.55); } 70% { box-shadow: 0 0 0 6px rgba(22, 163, 74, 0); } 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); } }
+.pill-backtest { color: var(--muted); border-style: dashed; border-color: #c3c9d6; background: #fff; }
+
+/* hover explanation, opens to the right so the scrolling table never clips it */
+.prov-tip { position: relative; cursor: help; }
+.prov-tip::after {
+  content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translate(-4px, -50%);
+  width: max-content; max-width: 240px; white-space: normal; text-transform: none; letter-spacing: 0; font-weight: 400;
+  font-family: var(--font-sans); font-size: 11.5px; line-height: 1.4; color: #fff; background: var(--ink);
+  padding: 7px 9px; border-radius: 3px; box-shadow: 3px 3px 0 0 var(--primary);
+  opacity: 0; pointer-events: none; z-index: 5; transition: opacity 140ms ease, transform 160ms var(--ease-out);
+}
+.prov-tip:hover::after { opacity: 1; transform: translate(0, -50%); }
+@media (prefers-reduced-motion: reduce) { .pill-onchain .pill-dot { animation: none; } }

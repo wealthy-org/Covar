@@ -6,25 +6,36 @@ import { useMemo, useState } from "react";
 import { useCovar } from "@/lib/store";
 import { TokenLogo } from "@/components/ui";
 import { Sparkline } from "@/components/Chart";
-import { PROVENANCE_LABEL } from "@/lib/types";
-import { cx, pct, pctSigned, usd } from "@/lib/format";
+import { cx, pctSigned, usd } from "@/lib/format";
 import type { Agent } from "@/lib/types";
 import { VAULT_AGENT_ID } from "@/lib/vaultAgent";
 
 /**
- * Reference layout (sharpe.ac /discover): title + mono subtitle, underline tabs
- * LIVE VAULTS / AGENT ARENA with SORT BY on the right, then one white table card
- * (vaults) or a grid of practice cards (arena). Backtests are shown in the arena
- * under their own heading and are never ranked against real records.
+ * Discover — one institutional-terminal table for every agent, four views:
+ *   ALL · LIVE VAULTS · AGENT ARENA · BACKTESTS, plus a Market filter and Sort by.
+ *
+ * Ranking rule from the brief: records of different provenance are never ranked
+ * against each other. The All view therefore keeps three groups in a fixed order
+ * (live vaults → agent arena → backtests); Sort by only reorders rows inside a
+ * group. The deployed vault (chain data, package 3.6) is always pinned first and
+ * carries the bright-green on-chain badge in the Provenance column.
  */
-type Tab = "vaults" | "arena";
+type Tab = "all" | "vaults" | "arena" | "backtests";
+type GroupId = Exclude<Tab, "all">;
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "vaults", label: "Live vaults" },
+  { id: "arena", label: "Agent arena" },
+  { id: "backtests", label: "Backtests" },
+];
 
 const SORTS = [
-  { id: "tvl", label: "TVL" },
-  { id: "score", label: "Covar score" },
+  { id: "score", label: "Score" },
   { id: "return", label: "Return" },
+  { id: "tvl", label: "TVL" },
+  { id: "age", label: "Age" },
   { id: "drawdown", label: "Smallest drop" },
-  { id: "age", label: "Longest record" },
 ] as const;
 type SortId = (typeof SORTS)[number]["id"];
 
@@ -33,219 +44,240 @@ const sorter = (sort: SortId) => (a: Agent, b: Agent) => {
     case "return":
       return b.returnPct - a.returnPct;
     case "tvl":
-      return b.tvlUsd - a.tvlUsd;
+      return (b.tvlUsd || 0) - (a.tvlUsd || 0) || b.score - a.score;
     case "drawdown":
       return b.drawdownPct - a.drawdownPct;
     case "age":
-      return b.liveAgeDays - a.liveAgeDays;
+      return ageOf(b) - ageOf(a);
     default:
       return b.score - a.score;
   }
 };
 
-const RECORD_LABEL: Record<Agent["provenance"], string> = {
-  practice: "Practice return · pretend money",
-  testnet: "Test-exchange return · test funds",
-  backtest: "Backtest return · history replay",
-  live: "Live return",
-  vault: "Vault share price",
+// backtests have no live age; their replayed span (one curve point per day) stands in
+const ageOf = (a: Agent) => a.liveAgeDays || (a.provenance === "backtest" ? a.curve.length : 0);
+
+const GROUPS: Record<GroupId, { title: string; note: string }> = {
+  vaults: {
+    title: "Live vaults · real money",
+    note: "Open vaults with a real-money record. The deployed vault is pinned first; other rows are seeded demo data.",
+  },
+  arena: {
+    title: "Agent arena · pretend money or test funds",
+    note: "Still proving themselves. Ranked only against each other. Nothing here takes deposits.",
+  },
+  backtests: {
+    title: "Backtests · not ranked against real records",
+    note: "Reproducible history replays. Not investable and never compared with live results.",
+  },
 };
 
-const PILL: Record<Agent["provenance"], string> = {
-  practice: "pill pill-accent",
-  testnet: "pill pill-amber",
-  backtest: "pill",
-  live: "pill pill-ink",
-  vault: "pill pill-ink",
+const SUBTITLE: Record<Tab, string> = {
+  all: "Every agent on Covar in one table, grouped by where its record comes from. Groups are never ranked against each other.",
+  vaults: "Agents with a real-money record and an open vault. Index rows in this build are seeded demo data.",
+  arena: "Agents still proving themselves with pretend money or test funds. Nothing here takes deposits.",
+  backtests: "History replays of strategies. Useful to judge an idea, never a substitute for a live record.",
 };
 
-function ArenaCard({ agent }: { agent: Agent }) {
-  const up = agent.returnPct >= 0;
-  const days = Math.max(1, agent.liveAgeDays || agent.curve.length);
-  return (
-    <Link href={`/agents/${agent.id}`} className="rcard arena-card">
-      <div className="row gap-10" style={{ minWidth: 0 }}>
-        <TokenLogo market={agent.market} size={30} />
-        <div className="stack" style={{ gap: 2, minWidth: 0 }}>
-          <span className="strong truncate" style={{ fontSize: 14.5, color: "var(--ink)" }}>
-            {agent.name}
-          </span>
-          <span className="tiny mono">
-            {agent.market} · {agent.timeframe}
-          </span>
-        </div>
-        <span className="spacer" />
-        <span className={PILL[agent.provenance]}>{agent.provenance}</span>
-      </div>
-
-      <div className="stack" style={{ gap: 4 }}>
-        <span className="stat-label">{RECORD_LABEL[agent.provenance]}</span>
-        <span className="mono-num" style={{ fontSize: 30, lineHeight: 1.1, color: up ? "var(--positive)" : "var(--negative)" }}>
-          {pctSigned(agent.returnPct)}
-        </span>
-      </div>
-
-      <Sparkline data={agent.curve} width={300} height={56} fluid color={up ? "#137A4B" : "#B42318"} />
-
-      <div className="arena-stats">
-        <div className="stack" style={{ gap: 2 }}>
-          <span className="stat-label">Trades</span>
-          <span className="mono-num">{agent.tradeCount}</span>
-        </div>
-        <div className="stack" style={{ gap: 2 }}>
-          <span className="stat-label">Worst drop</span>
-          <span className="mono-num neg">{pct(agent.drawdownPct)}</span>
-        </div>
-        <div className="stack" style={{ gap: 2 }}>
-          <span className="stat-label">{agent.provenance === "backtest" ? "Replayed" : "Running for"}</span>
-          <span className="mono-num">{days}d</span>
-        </div>
-      </div>
-
-      <span className="accent-link" style={{ fontSize: 11 }}>
-        See its trades and history →
-      </span>
-    </Link>
-  );
+type Prov = { key: string; label: string; cls: string; tip: string };
+function provenanceOf(a: Agent): Prov {
+  if (a.id === VAULT_AGENT_ID)
+    return { key: "onchain", label: "on-chain", cls: "pill pill-onchain", tip: "Every figure in this row is read from the deployed vault's chain logs" };
+  switch (a.provenance) {
+    case "live":
+    case "vault":
+      return { key: "live", label: "live", cls: "pill pill-ink", tip: "Real-money record from the agent's own trading (demo data in this build)" };
+    case "testnet":
+      return { key: "testnet", label: "testnet", cls: "pill pill-amber", tip: "Traded on a test exchange with test funds — no real value" };
+    case "practice":
+      return { key: "practice", label: "practice", cls: "pill pill-accent", tip: "Live prices, pretend money. Not a real-money record" };
+    default:
+      return { key: "backtest", label: "backtest", cls: "pill pill-backtest", tip: "History replay. Not investable, never ranked against real records" };
+  }
 }
+
+const groupOf = (a: Agent): GroupId | null => {
+  if (a.id === VAULT_AGENT_ID) return "vaults";
+  if (a.provenance === "live" && !!a.vault) return "vaults";
+  if (a.provenance === "practice" || a.provenance === "testnet") return "arena";
+  if (a.provenance === "backtest") return "backtests";
+  return null;
+};
+
+const COLS = 9;
 
 export default function ExplorePage() {
   const router = useRouter();
   const { agents, creators } = useCovar();
-  const [tab, setTab] = useState<Tab>("vaults");
-  const [sort, setSort] = useState<SortId>("tvl");
+  const [tab, setTab] = useState<Tab>("all");
+  const [sort, setSort] = useState<SortId>("score");
+  const [market, setMarket] = useState<string>("all");
 
-  // the deployed vault (chain data, 3.6) is pinned first; demo records follow in the chosen order
-  const vaults = useMemo(
-    () => [
-      ...agents.filter((a) => a.id === VAULT_AGENT_ID),
-      ...agents.filter((a) => a.id !== VAULT_AGENT_ID && a.provenance === "live" && !!a.vault).sort(sorter(sort)),
-    ],
-    [agents, sort]
-  );
-  const arena = useMemo(
-    () => agents.filter((a) => a.provenance === "practice" || a.provenance === "testnet").sort(sorter(sort === "tvl" ? "return" : sort)),
-    [agents, sort]
-  );
-  const backtests = useMemo(() => agents.filter((a) => a.provenance === "backtest"), [agents]);
+  const markets = useMemo(() => {
+    const order = ["BTC-PERP", "ETH-PERP"];
+    const all = Array.from(new Set(agents.filter((a) => groupOf(a)).map((a) => a.market)));
+    return all.sort((x, y) => {
+      const ix = order.indexOf(x), iy = order.indexOf(y);
+      if (ix !== -1 || iy !== -1) return (ix === -1 ? 99 : ix) - (iy === -1 ? 99 : iy);
+      return x.localeCompare(y);
+    });
+  }, [agents]);
+
+  // rows per group: market filter first, then the sort inside the group; the deployed vault stays pinned
+  const groups = useMemo(() => {
+    const inMarket = agents.filter((a) => market === "all" || a.market === market);
+    const pick = (g: GroupId) => inMarket.filter((a) => groupOf(a) === g);
+    const vaults = pick("vaults");
+    return {
+      vaults: [...vaults.filter((a) => a.id === VAULT_AGENT_ID), ...vaults.filter((a) => a.id !== VAULT_AGENT_ID).sort(sorter(sort))],
+      // pretend-money rows have no TVL; TVL falls back to return so the order still means something
+      arena: pick("arena").sort(sorter(sort === "tvl" ? "return" : sort)),
+      backtests: pick("backtests").sort(sorter(sort === "tvl" ? "return" : sort)),
+    } satisfies Record<GroupId, Agent[]>;
+  }, [agents, market, sort]);
+
+  const counts: Record<Tab, number> = {
+    all: groups.vaults.length + groups.arena.length + groups.backtests.length,
+    vaults: groups.vaults.length,
+    arena: groups.arena.length,
+    backtests: groups.backtests.length,
+  };
+  const shown: GroupId[] = tab === "all" ? ["vaults", "arena", "backtests"] : [tab];
   const creatorOf = (id: string) => creators.find((c) => c.id === id);
-  const running = arena.filter((a) => a.status === "practice" || a.status === "live").length;
+
+  const renderRow = (a: Agent) => {
+    const prov = provenanceOf(a);
+    const up = a.returnPct >= 0;
+    const isVault = a.id === VAULT_AGENT_ID;
+    const days = ageOf(a);
+    return (
+      <tr key={a.id} className="row-click" data-testid="discover-row" data-provenance={prov.key} onClick={() => router.push(`/agents/${a.id}`)}>
+        <td>
+          <div className="row gap-10" style={{ flexWrap: "nowrap" }}>
+            <TokenLogo market={a.market} />
+            <div className="stack" style={{ gap: 2, minWidth: 0 }}>
+              <span className="row gap-8" style={{ flexWrap: "nowrap" }}>
+                <Link href={`/agents/${a.id}`} className="table-strong" style={{ color: "var(--ink)", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                  {a.name}
+                </Link>
+                <span className="tagbox hide-xs">{a.market}</span>
+              </span>
+              <span className="tiny mono">
+                {a.timeframe && a.timeframe !== "—" ? `${a.timeframe} · ` : ""}
+                {a.status === "live" ? "operating" : a.status.replace("_", " ")}
+              </span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <span className={cx(prov.cls, "prov-tip")} data-tip={prov.tip} aria-label={`${prov.label}: ${prov.tip}`} data-testid={isVault ? "onchain-vault-tag" : "provenance-badge"}>
+            {prov.key === "onchain" && <span className="pill-dot" aria-hidden />}
+            {prov.label}
+          </span>
+        </td>
+        <td className="mono tiny hide-sm">@{creatorOf(a.creatorId)?.handle ?? "you"}</td>
+        <td className="hide-md" style={{ width: 96 }}>
+          {a.curve.length > 1 ? <Sparkline data={a.curve} width={88} height={26} color={up ? "#137A4B" : "#B42318"} /> : <span className="tiny">—</span>}
+        </td>
+        <td className={cx("right", up ? "pos" : "neg")}>{pctSigned(a.returnPct)}</td>
+        <td className="right hide-md">{a.score ? a.score.toFixed(2) : "—"}</td>
+        <td className="right">{a.tvlUsd ? usd(a.tvlUsd, { compact: true }) : "—"}</td>
+        <td className="right hide-sm">{days ? `${days}d` : "—"}</td>
+        <td className="right hide-sm">{isVault || groupOf(a) !== "vaults" ? "—" : "≤20%"}</td>
+      </tr>
+    );
+  };
 
   return (
     <div className="wrap-md page-pad">
       <div className="page-head">
         <h1 className="page-title">Discover</h1>
-        <p className="page-sub">
-          {tab === "vaults"
-            ? "Agents with a real-money record and an open vault. Index rows in this build are seeded demo data."
-            : "Agents still proving themselves with pretend money or test funds. Nothing here takes deposits."}
-        </p>
+        <p className="page-sub">{SUBTITLE[tab]}</p>
       </div>
 
       <div className="row between gap-12 wrap" style={{ borderBottom: "1px solid var(--border)", marginBottom: 22 }}>
         <div className="utabs" role="tablist" style={{ borderBottom: 0 }}>
-          {(
-            [
-              ["vaults", "Live vaults"],
-              ["arena", "Agent arena"],
-            ] as const
-          ).map(([id, label]) => (
-            <button key={id} role="tab" aria-selected={tab === id} className="utab" data-active={tab === id} onClick={() => setTab(id)}>
+          {TABS.map(({ id, label }) => (
+            <button key={id} role="tab" aria-selected={tab === id} className="utab" data-active={tab === id} data-testid={`tab-${id}`} onClick={() => setTab(id)}>
               {label}
+              <span className="utab-count">{counts[id]}</span>
             </button>
           ))}
         </div>
-        <label className="row gap-8" style={{ paddingBottom: 8 }}>
-          <span className="stat-label">Sort by</span>
-          <select className="select select-sm" value={sort} onChange={(e) => setSort(e.target.value as SortId)} aria-label="Sort agents">
-            {SORTS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="row gap-16 wrap" style={{ paddingBottom: 8 }}>
+          <label className="row gap-8">
+            <span className="stat-label">Market</span>
+            <select className="select select-sm" value={market} onChange={(e) => setMarket(e.target.value)} aria-label="Filter by market" data-testid="filter-market">
+              <option value="all">All markets</option>
+              {markets.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="row gap-8">
+            <span className="stat-label">Sort by</span>
+            <select className="select select-sm" value={sort} onChange={(e) => setSort(e.target.value as SortId)} aria-label="Sort agents" data-testid="filter-sort">
+              {SORTS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
 
-      <div key={tab} className="fx-in">
-      {tab === "vaults" ? (
-        <>
-          <div className="table-wrap">
-            <table className="table table-rows">
-              <thead>
-                <tr>
-                  <th>Agent</th>
-                  <th className="hide-sm">Creator</th>
-                  <th className="right hide-sm">Fee</th>
-                  <th className="right">Return</th>
-                  <th className="right hide-md">Covar score</th>
-                  <th className="right">TVL</th>
-                  <th className="right hide-sm">Age</th>
-                </tr>
-              </thead>
-              <tbody>
-                {vaults.map((a) => (
-                  <tr key={a.id} className="row-click" onClick={() => router.push(`/agents/${a.id}`)}>
-                    <td>
-                      <div className="row gap-10" style={{ flexWrap: "nowrap" }}>
-                        <TokenLogo market={a.market} />
-                        <div className="stack" style={{ gap: 2, minWidth: 0 }}>
-                          <span className="row gap-8" style={{ flexWrap: "nowrap" }}>
-                            <Link href={`/agents/${a.id}`} className="table-strong" style={{ color: "var(--ink)", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
-                              {a.name}
-                            </Link>
-                            <span className="tagbox hide-xs">{a.market}</span>
-                            {a.id === VAULT_AGENT_ID && (
-                              <span className="pill pill-green" data-testid="onchain-vault-tag" title="Every figure in this row is read from the deployed vault's chain logs">
-                                on-chain
-                              </span>
-                            )}
-                          </span>
-                          <span className="tiny mono">
-                            {PROVENANCE_LABEL[a.provenance].toLowerCase()} · {a.status === "live" ? "operating" : a.status.replace("_", " ")}
-                          </span>
-                        </div>
-                      </div>
+      <div key={tab} className="fx-in stack gap-24">
+        <div className="table-wrap">
+          <table className="table table-rows discover-table">
+            <thead>
+              <tr>
+                <th>Agent</th>
+                <th>Provenance</th>
+                <th className="hide-sm">Creator</th>
+                <th className="hide-md">Record</th>
+                <th className="right">Return</th>
+                <th className="right hide-md">Score</th>
+                <th className="right">TVL</th>
+                <th className="right hide-sm">Age</th>
+                <th className="right hide-sm">Fee</th>
+              </tr>
+            </thead>
+            {shown.map((g) => (
+              <tbody key={g} data-testid={`group-${g}`}>
+                {tab === "all" && (
+                  <tr className="group-row">
+                    <td colSpan={COLS}>
+                      <span className="label-dot">{GROUPS[g].title}</span>
+                      <span className="mono-note group-note">{GROUPS[g].note}</span>
                     </td>
-                    <td className="mono tiny hide-sm">@{creatorOf(a.creatorId)?.handle ?? "you"}</td>
-                    <td className="right hide-sm">{a.id === VAULT_AGENT_ID ? "—" : "≤20%"}</td>
-                    <td className={cx("right", a.returnPct >= 0 ? "pos" : "neg")}>{pctSigned(a.returnPct)}</td>
-                    <td className="right hide-md">{a.score ? a.score.toFixed(2) : "—"}</td>
-                    <td className="right">{usd(a.tvlUsd || 0, { compact: true })}</td>
-                    <td className="right hide-sm">{a.liveAgeDays ? `${a.liveAgeDays}d` : "—"}</td>
                   </tr>
-                ))}
-                {vaults.length === 0 && (
+                )}
+                {groups[g].map(renderRow)}
+                {groups[g].length === 0 && (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: "center", padding: 32 }}>
-                      <span className="small">No live vaults yet.</span>
+                    <td colSpan={COLS} style={{ textAlign: "center", padding: 28 }}>
+                      <span className="small">
+                        {market === "all" ? "Nothing here yet." : `No ${g === "vaults" ? "live vaults" : g === "arena" ? "arena agents" : "backtests"} on ${market}.`}
+                      </span>
                     </td>
                   </tr>
                 )}
               </tbody>
-            </table>
-          </div>
-          <p className="mono-note" style={{ marginTop: 18, maxWidth: 980 }}>
-            Return is net of fees and costs over the agent&apos;s own record. An agent under 7 days live shows its practice figures
-            (marked practice), then its own live run, then its vault&apos;s record once that has 7 days of share price. Backtests
-            never enter the ranking. Past results don&apos;t promise future ones.
-          </p>
-        </>
-      ) : (
-        <div className="stack gap-24">
-          <span className="stat-label">
-            {arena.length} agent{arena.length === 1 ? "" : "s"} · {running} running
-          </span>
-          {arena.length > 0 ? (
-            <div className="arena-grid">
-              {arena.map((a) => (
-                <ArenaCard key={a.id} agent={a} />
-              ))}
-            </div>
-          ) : (
-            <div className="rcard rcard-pad small">No agents are practising right now.</div>
-          )}
+            ))}
+          </table>
+        </div>
 
+        {tab !== "all" && <p className="mono-note" style={{ margin: 0, maxWidth: 980 }}>{GROUPS[tab].note}</p>}
+        <p className="mono-note" style={{ margin: 0, maxWidth: 980 }}>
+          Return is net of fees and costs over the agent&apos;s own record. An agent under 7 days live shows its practice figures
+          (marked practice), then its own live run, then its vault&apos;s record once that has 7 days of share price. Backtests
+          never enter the ranking. Past results don&apos;t promise future ones.
+        </p>
+
+        {(tab === "arena" || tab === "backtests") && (
           <div className="rcard arena-banner">
             <div className="stack" style={{ gap: 4 }}>
               <span className="strong" style={{ color: "var(--ink)", fontSize: 15 }}>
@@ -257,22 +289,7 @@ export default function ExplorePage() {
               Open studio →
             </Link>
           </div>
-
-          {backtests.length > 0 && (
-            <section className="stack gap-14">
-              <div className="stack" style={{ gap: 4 }}>
-                <span className="label-dot">Backtests · not ranked</span>
-                <span className="mono-note">Reproducible history replays. Not investable and never compared with real records.</span>
-              </div>
-              <div className="arena-grid">
-                {backtests.map((a) => (
-                  <ArenaCard key={a.id} agent={a} />
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
+        )}
       </div>
     </div>
   );
