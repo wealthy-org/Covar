@@ -21,6 +21,7 @@ import { createOperator, plan, DEFAULT_CONFIG, type VaultSnapshot, type CloseSta
 import { createChainPort, VAULT_ABI } from "../../services/operator/chain";
 import { executionClosePort, exitsFor, usdgUnits } from "../../services/operator/venue";
 import { createAlertSink, formatAlert } from "../../services/monitor/alerts";
+import { parseTargets } from "../../services/monitor/targets";
 import { createMonitor, evaluate, DEFAULT_MONITOR } from "../../services/monitor/app";
 import { createRisk } from "../../services/risk/app";
 import { demoIntent } from "../../services/exchange/app";
@@ -434,6 +435,20 @@ async function live() {
       }
     }
   }
+}
+
+// ── MONITOR_TARGETS parsing (what people really type into .env) ──
+{
+  const t = (raw: string | undefined) => parseTargets(raw);
+  const std = t("operator=http://127.0.0.1:4014,indexer=http://127.0.0.1:4016/");
+  ok("targets: name=url pairs, trailing slash dropped", JSON.stringify(std.targets) === JSON.stringify([{ name: "operator", url: "http://127.0.0.1:4014" }, { name: "indexer", url: "http://127.0.0.1:4016" }]) && std.problems.length === 0, std);
+  const names = t("operator,indexer");
+  ok("targets: bare known names map to their ports", names.targets.map((x) => x.url).join() === "http://127.0.0.1:4014,http://127.0.0.1:4016", names);
+  const loose = t('"operator: http://127.0.0.1:4014 ; http://127.0.0.1:4016"');
+  ok("targets: quotes, colon, ; separator, bare URL named by port", loose.targets.map((x) => `${x.name}@${x.url}`).join() === "operator@http://127.0.0.1:4014,indexer@http://127.0.0.1:4016", loose);
+  const bad = t("operator=http://127.0.0.1:4014,whatever");
+  ok("targets: junk entry reported, not a crash", bad.targets.length === 1 && bad.problems.length === 1 && bad.problems[0].includes("whatever"), bad);
+  ok("targets: empty → default execution plane + operator", t("").targets.map((x) => x.name).join() === "execution,risk,signer,exchange,operator" && t(undefined).targets.length === 5);
 }
 
 (async () => {

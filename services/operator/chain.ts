@@ -146,7 +146,9 @@ export function createChainPort(cfg: ChainPortConfig): VaultPort & { address: st
       if (tradingAccount === "0x0000000000000000000000000000000000000000") tradingAccount = null;
     }
 
-    const [operatorGasWei, operatorUsdg] = opAddr ? await Promise.all([provider.getBalance(opAddr), usdg.balanceOf(opAddr) as Promise<bigint>]) : [0n, 0n];
+    // no address configured (e.g. the monitor): watch the wallet the vault names as operator
+    const who = opAddr ?? ((await vault.operator()) as string);
+    const [operatorGasWei, operatorUsdg] = await Promise.all([provider.getBalance(who), usdg.balanceOf(who) as Promise<bigint>]);
 
     return {
       isV2: v2now,

@@ -7,6 +7,7 @@
  * the model fails, the same deterministic rules parser answers and the response
  * says exactly which engine produced it.
  */
+import { COPILOT_MAX_OUTPUT_TOKENS } from "./aiLimits";
 import type { Strategy } from "./types";
 import { buildStrategy, readPrompt, strategyFromIntent, type PromptIntent } from "./strategy";
 
@@ -61,19 +62,23 @@ Rules:
 /**
  * Provider selection (server-side env only — keys never reach the browser).
  *
- *   AI_PROVIDER          orbio | anthropic | openai   (optional; inferred from the key prefix)
- *   AI_PROVIDER_API_KEY  sk-orbio-… / sk-ant-… / sk-…
+ *   AI_PROVIDER          orbio | anthropic | openai | groq | gemini   (optional; inferred from the key prefix)
+ *   AI_PROVIDER_API_KEY  sk-orbio-… / sk-ant-… / sk-… / gsk_… (Groq) / AIza… (Gemini)
  *   AI_MODEL             optional model id override
  *   AI_BASE_URL          optional gateway override (OpenAI-compatible providers)
  *
  * Orbio is the reference product's AI dependency (brief §7/§8): an
  * OpenAI-compatible gateway at api.orbio.so with one key for many models.
+ * Groq and Gemini have free tiers (no card) with OpenAI-compatible endpoints —
+ * handy for development; their free quotas are rate-limited.
  * Legacy ANTHROPIC_API_KEY / COPILOT_MODEL are still honoured.
  */
 const PROVIDERS = {
   orbio: { label: "Orbio", baseUrl: "https://api.orbio.so/api/v1", model: "anthropic/claude-haiku-4.5", wire: "openai-compatible" },
   openai: { label: "OpenAI", baseUrl: "https://api.openai.com/v1", model: "gpt-5-mini", wire: "openai-compatible" },
   anthropic: { label: "Anthropic (Claude)", baseUrl: "https://api.anthropic.com/v1", model: "claude-haiku-4-5-20251001", wire: "anthropic" },
+  groq: { label: "Groq", baseUrl: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-20b", wire: "openai-compatible" },
+  gemini: { label: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", wire: "openai-compatible" },
 } as const;
 type ProviderName = keyof typeof PROVIDERS;
 
@@ -100,14 +105,18 @@ export function copilotProvider(): CopilotProvider {
         ? "anthropic"
         : apiKey.startsWith("sk-orbio-")
           ? "orbio"
-          : apiKey.startsWith("sk-")
-            ? "openai"
-            : undefined;
+          : apiKey.startsWith("gsk_")
+            ? "groq"
+            : apiKey.startsWith("AIza")
+              ? "gemini"
+              : apiKey.startsWith("sk-")
+                ? "openai"
+                : undefined;
   if (!name) {
     return {
       kind: "none",
       label: "rules parser",
-      reason: `AI_PROVIDER "${declared ?? "(unset)"}" is not recognised and the key prefix is unknown. Use orbio, anthropic or openai; the rules parser answers until then.`,
+      reason: `AI_PROVIDER "${declared ?? "(unset)"}" is not recognised and the key prefix is unknown. Use orbio, anthropic, openai, groq or gemini; the rules parser answers until then.`,
     };
   }
   const cfg = PROVIDERS[name];
@@ -155,13 +164,13 @@ async function callAnthropic(prompt: string, p: Extract<CopilotProvider, { kind:
     },
     body: JSON.stringify({
       model: p.model,
-      max_tokens: 400,
+      max_tokens: COPILOT_MAX_OUTPUT_TOKENS,
       system: SYSTEM,
       messages: [{ role: "user", content: prompt }],
     }),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`${p.label} → HTTP ${res.status}`);
+  if (!res.ok) throw await providerError(p.label, res);
   const json = (await res.json()) as { content?: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
   if (json.usage) onUsage({ provider: p.label, model: p.model, tokensIn: json.usage.input_tokens ?? 0, tokensOut: json.usage.output_tokens ?? 0 });
   const text = json.content?.find((c) => c.type === "text")?.text;
@@ -169,15 +178,43 @@ async function callAnthropic(prompt: string, p: Extract<CopilotProvider, { kind:
   return text;
 }
 
+/** Provider error → one short, key-free line (the provider's own reason when it gives one). */
+async function providerError(label: string, res: Response): Promise<Error> {
+  let reason = "";
+  try {
+    const parsed = (await res.json()) as unknown;
+    // Gemini wraps the error in an array: [{ error: { message } }]
+    const body = (Array.isArray(parsed) ? parsed[0] : parsed) as { error?: { message?: string; code?: string } | string; message?: string };
+    const e = body.error;
+    reason = (typeof e === "string" ? e : e?.message ?? e?.code ?? body.message ?? "").toString();
+  } catch {
+    /* no JSON body */
+  }
+  reason = reason.replace(/\b(sk|pk|key)[-_][A-Za-z0-9_-]{6,}/g, "<key>").replace(/\s+/g, " ").trim().slice(0, 180);
+  const hint =
+    res.status === 401 || res.status === 403 || /api key/i.test(reason)
+      ? " (check AI_PROVIDER_API_KEY)"
+      : res.status === 402
+        ? " (provider balance/credits exhausted)"
+        : res.status === 404
+          ? " (check AI_MODEL / AI_BASE_URL)"
+          : res.status === 429
+            ? " (provider rate limit)"
+            : "";
+  return new Error(`${label} → HTTP ${res.status}${hint}${reason ? `: ${reason}` : ""}`);
+}
+
 /** Orbio and OpenAI speak the same chat-completions wire format. */
 async function callOpenAICompatible(prompt: string, p: Extract<CopilotProvider, { kind: "openai-compatible" }>, onUsage: (u: ModelUsage) => void): Promise<string> {
   const res = await fetch(`${p.baseUrl}/chat/completions`, {
     method: "POST",
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(20_000),
     headers: { "content-type": "application/json", authorization: `Bearer ${p.apiKey}` },
     body: JSON.stringify({
       model: p.model,
-      max_tokens: 400,
+      max_tokens: COPILOT_MAX_OUTPUT_TOKENS,
+      // reasoning models: think briefly — the answer is a ~100-token JSON object
+      ...(/api\.groq\.com|generativelanguage\.googleapis\.com/.test(p.baseUrl) ? { reasoning_effort: "low" } : {}),
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: prompt },
@@ -185,10 +222,8 @@ async function callOpenAICompatible(prompt: string, p: Extract<CopilotProvider, 
     }),
     cache: "no-store",
   });
-  if (!res.ok) {
-    // 402 = balance/credits exhausted on Orbio: surfaced, then the rules parser answers.
-    throw new Error(`${p.label} → HTTP ${res.status}${res.status === 402 ? " (AI credits exhausted)" : ""}`);
-  }
+  // 402 = balance/credits exhausted on Orbio: surfaced, then the rules parser answers.
+  if (!res.ok) throw await providerError(p.label, res);
   const json = (await res.json()) as {
     choices?: { message?: { content?: string | null } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
@@ -281,6 +316,9 @@ export async function interpretDraft(prompt: string, opts: { skipModel?: string 
         usage,
       };
     } catch (err) {
+      const e = err as Error;
+      const why = e.name === "TimeoutError" || e.name === "AbortError" ? `${provider.label} did not answer within 20 s` : e.message;
+      console.warn(`[copilot] model call failed (${provider.label} · ${provider.model}): ${why}`);
       const { strategy, unsupported, questions } = buildStrategy(prompt);
       return {
         ok: true,
@@ -289,7 +327,7 @@ export async function interpretDraft(prompt: string, opts: { skipModel?: string 
         strategy,
         unsupported,
         questions,
-        note: `Model call failed (${(err as Error).message}); the deterministic rules parser produced this draft instead.`,
+        note: `Model call failed (${why}); the deterministic rules parser produced this draft instead.`,
         usage,
       };
     }

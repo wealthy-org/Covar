@@ -104,7 +104,7 @@ export function Builder() {
             data.engine === "model"
               ? `${data.providerLabel}${data.credits ? ` · charged $${data.credits.chargedUsd.toFixed(4)} of credits (balance $${data.credits.balanceUsd.toFixed(4)})` : ""}`
               : data.engine === "rules-fallback"
-                ? `rules parser (model failed${data.credits ? `; provider usage still billed $${data.credits.chargedUsd.toFixed(4)}` : ""})`
+                ? `rules parser (model failed${data.credits ? `; provider usage still billed $${data.credits.chargedUsd.toFixed(4)}` : ""})${data.note ? `. ${data.note.replace(/; the deterministic rules parser produced this draft instead\.$/, "").replace(/^Model call failed \((.*)\)$/, "Reason: $1")}` : ""}`
                 : data.engine === "rules-credits"
                   ? `rules parser, free (${data.note ?? "no Copilot credits"})`
                   : "rules parser — no model key configured";

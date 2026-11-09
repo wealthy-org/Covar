@@ -266,6 +266,14 @@ Simpan semua tx hash — itu bukti untuk `docs/rehearsals/46630-manual.json`.
    ```
 4. Di Vercel, perintah build menjadi `pnpm db:pg:generate && pnpm build` supaya client Prisma yang dipakai adalah versi Postgres.
 
+### 6.2a Indexer saja (staging minimal untuk web)
+Kalau execution plane belum perlu, cukup host indexer agar `/treasury`, Discover dan halaman vault di Vercel punya data:
+1. Railway → New Project → Deploy from GitHub repo (repo Covar). Settings → **Start Command** `pnpm indexer`.
+2. Variables: `INDEXER_VAULT_ADDRESS` (vault v2), `INDEXER_CHAIN=testnet`, `INDEXER_RPC_URL=https://rpc.testnet.chain.robinhood.com`, `INDEXER_START_BLOCK=150482951`. Port otomatis memakai `PORT` dari Railway.
+3. Settings → Networking → **Generate Domain**. Cek `https://<domain>/health` harus `ok: true` dan `behind` mendekati 0.
+4. Tanpa volume, restart akan memindai ulang dari `INDEXER_START_BLOCK` (±1 menit dengan RPC publik). Hasilnya sama karena semua data dibaca ulang dari chain.
+5. Isi `INDEXER_URL=https://<domain>` di Vercel.
+
 ### 6.2 Execution plane (Railway/Fly/VPS)
 1. Buat service dari repo yang sama dengan perintah start `pnpm services`. Kalau alamat vault di-set, perintah ini sekaligus menyalakan **operator** (:4014), **indexer** (:4016), dan **monitor** (:4015) selain execution/risk/signer/venue.
 2. Pasang **persistent volume** di `COVAR_STATE_DIR` (default `.covar-state/`). Isinya journal audit untuk rekonsiliasi setelah restart, jadi jangan sampai hilang.
@@ -288,7 +296,7 @@ Simpan semua tx hash — itu bukti untuk `docs/rehearsals/46630-manual.json`.
 | `RISK_START_EQUITY` dll. | default kecuali ada keputusan lain |
 
 ### 6.3 Web (Vercel)
-1. Import repo dengan framework Next.js. Build default (`pnpm build`) sudah cukup, karena postinstall men-generate Prisma.
+1. Import repo dengan framework Next.js. **Build Command** di Settings → Build & Deployment harus diubah menjadi `pnpm db:pg:generate && pnpm build`. Postinstall hanya men-generate client SQLite, dan client itu menolak `DATABASE_URL` Postgres (error P1012).
 2. Isi Environment Variables:
 
 | Key | Nilai staging (testnet) |

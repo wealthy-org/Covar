@@ -33,7 +33,8 @@ import { buildSummary, type IndexedEvent, type TransferOut } from "./summary";
  *   GET /health
  */
 
-const PORT = Number(process.env.INDEXER_PORT || 4016);
+// INDEXER_PORT, else the host's PORT (Railway/Render/Fly inject one), else 4016
+const PORT = Number(process.env.INDEXER_PORT || process.env.PORT || 4016);
 function rpcUrl() {
   if (process.env.INDEXER_RPC_URL || process.env.RPC_URL) return (process.env.INDEXER_RPC_URL || process.env.RPC_URL)!;
   const chain = process.env.INDEXER_CHAIN || process.env.OPERATOR_CHAIN || "local";

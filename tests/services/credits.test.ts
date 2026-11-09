@@ -123,8 +123,8 @@ const req = (url: string, init: { method?: string; body?: unknown; cookie?: stri
   ok("application fee 20% on top", priced.appFee === 400n && priced.total === 2400n, priced);
   ok("provider-reported cost wins over the table (rounded up)", credits.priceUsage({ ...u, providerCostUsd: 0.0000001 }, p)!.providerCost === 1n);
   ok("no table and no provider cost → null (never guessed)", credits.priceUsage(u, { inPerMTok: null, outPerMTok: null, appFeePct: 0 }) === null);
-  ok("reserve = floor $0.01 when a worst-case call is cheaper ($0.00384)", credits.reserveFor(p) === 10_000n, credits.reserveFor(p).toString());
-  ok("reserve = worst-case call (1.2k in + 400 out + fee) when above the floor", credits.reserveFor({ inPerMTok: 10, outPerMTok: 50, appFeePct: 20 }) === ((12_000n + 20_000n) * 120n) / 100n, credits.reserveFor({ inPerMTok: 10, outPerMTok: 50, appFeePct: 20 }).toString());
+  ok("reserve = floor $0.01 when a worst-case call is cheaper ($0.00744)", credits.reserveFor(p) === 10_000n, credits.reserveFor(p).toString());
+  ok("reserve = worst-case call (1.2k in + 1k out + fee) when above the floor", credits.reserveFor({ inPerMTok: 10, outPerMTok: 50, appFeePct: 20 }) === ((12_000n + 50_000n) * 120n) / 100n, credits.reserveFor({ inPerMTok: 10, outPerMTok: 50, appFeePct: 20 }).toString());
 
   // ------------------------------------------------------------- sessions
   const mkUser = async () => {

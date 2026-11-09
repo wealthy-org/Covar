@@ -1,7 +1,7 @@
 /**
  * Monitor entrypoint — `pnpm monitor` (also started by `pnpm services`).
  *
- *   MONITOR_TARGETS        name=url,... (default: the local execution plane + operator)
+ *   MONITOR_TARGETS        name=url,... or known names (operator,indexer); default: execution plane + operator
  *   MONITOR_INTERVAL_SEC   poll interval (default 60)
  *   MONITOR_HEARTBEAT_HOURS  "still alive" message cadence (default 24, 0 = off)
  *   MONITOR_WITHDRAWAL_SLA_HOURS  pending withdrawal alert (default 24)
@@ -14,20 +14,16 @@ import { serve } from "../shared/http";
 import { createChainPort } from "../operator/chain";
 import { alertSinkFromEnv } from "./alerts";
 import { createMonitor, type Observation } from "./app";
+import { parseTargets } from "./targets";
 
 const env = process.env;
 const PORT = Number(env.MONITOR_PORT || 4015);
 const STATE_DIR = env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
 const INTERVAL = Math.max(10, Number(env.MONITOR_INTERVAL_SEC || 60));
 
-const targets = (env.MONITOR_TARGETS || "execution=http://127.0.0.1:4010,risk=http://127.0.0.1:4012,signer=http://127.0.0.1:4013,exchange=http://127.0.0.1:4011,operator=http://127.0.0.1:4014")
-  .split(",")
-  .map((t) => t.trim())
-  .filter(Boolean)
-  .map((t) => {
-    const [name, url] = t.split("=");
-    return { name, url: url.replace(/\/$/, "") };
-  });
+const parsed = parseTargets(env.MONITOR_TARGETS);
+for (const p of parsed.problems) console.warn(`[monitor] ${p}`);
+const targets = parsed.targets;
 
 function rpcUrl() {
   if (env.OPERATOR_RPC_URL) return env.OPERATOR_RPC_URL;

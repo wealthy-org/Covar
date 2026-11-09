@@ -12,6 +12,7 @@
  * Credits are a liability (prepaid service), not revenue. Only the application
  * fee part of usage is platform revenue; the provider cost is a pass-through.
  */
+import { COPILOT_MAX_OUTPUT_TOKENS } from "./aiLimits";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db";
@@ -91,7 +92,7 @@ export function priceUsage(u: Usage, p: Pricing = pricing()): Priced | null {
 export function reserveFor(p: Pricing = pricing()): bigint {
   const floor = usdToMicro(num("CREDITS_MIN_BALANCE_USD", 0.01));
   if (p.inPerMTok === null || p.outPerMTok === null) return floor;
-  const worst = priceUsage({ provider: "", model: "", tokensIn: 1_200, tokensOut: 400 }, p)!.total; // 2000-char prompt + system ≈ 1.2k tokens
+  const worst = priceUsage({ provider: "", model: "", tokensIn: 1_200, tokensOut: COPILOT_MAX_OUTPUT_TOKENS }, p)!.total; // 2000-char prompt + system ≈ 1.2k tokens
   return worst > floor ? worst : floor;
 }
 
