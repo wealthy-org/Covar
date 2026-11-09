@@ -11,12 +11,21 @@ import { WalletGate } from "@/components/WalletGate";
 import CreditsPanel from "@/components/CreditsPanel";
 import { useCredits } from "@/lib/creditsClient";
 import { EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
-import { formatUnits, readAccount } from "@/lib/vaultTx";
+import { formatUnits, readAccount, type RequestState } from "@/lib/vaultTx";
+import { VAULT_AGENT_ID } from "@/lib/vaultAgent";
 import { getWalletProvider } from "@/lib/wallet";
 
-/** Real wallet + Covar vault balances from the chain (browser-wallet mode only). */
+interface ChainPosition {
+  usdg: number;
+  vault: number;
+  shares: number;
+  nav: number;
+  request: { state: RequestState; shares: number; settledUsd: number };
+}
+
+/** Real wallet + Covar vault position from the chain (browser-wallet mode only). */
 function useOnChainBalances(wallet: string, enabled: boolean) {
-  const [v, setV] = useState<{ usdg: number; vault: number } | null>(null);
+  const [v, setV] = useState<ChainPosition | null>(null);
   useEffect(() => {
     if (!enabled || !VAULT_ADDRESS || !wallet?.startsWith("0x")) return;
     let cancelled = false;
@@ -24,8 +33,15 @@ function useOnChainBalances(wallet: string, enabled: boolean) {
       try {
         const vault = await readVault(VAULT_ADDRESS);
         const a = await readAccount(VAULT_ADDRESS, vault.asset, wallet, EXPECTED_CHAIN_ID);
-        const toNum = (x: bigint) => Number(formatUnits(x, 6, 6).replace(/,/g, ""));
-        if (!cancelled) setV({ usdg: toNum(a.usdgBalance), vault: toNum((a.shares * a.navWad) / 10n ** 18n) });
+        const toNum = (x: bigint, d = 6) => Number(formatUnits(x, d, d).replace(/,/g, ""));
+        if (!cancelled)
+          setV({
+            usdg: toNum(a.usdgBalance),
+            vault: toNum((a.shares * a.navWad) / 10n ** 18n),
+            shares: toNum(a.shares),
+            nav: toNum(a.navWad, 18),
+            request: { state: a.request.state, shares: toNum(a.request.shares), settledUsd: toNum(a.request.settledAssets) },
+          });
       } catch {
         if (!cancelled) setV(null);
       }
@@ -36,6 +52,12 @@ function useOnChainBalances(wallet: string, enabled: boolean) {
   }, [wallet, enabled]);
   return v;
 }
+
+const REQUEST_TEXT: Partial<Record<RequestState, string>> = {
+  ClosingPositions: "the operator is closing your share of open positions",
+  Settling: "positions are closed; the operator is settling it at a fresh price",
+  Claimable: "it is ready — claim it in the Invest card",
+};
 
 export default function PortfolioPage() {
   return (
@@ -74,10 +96,15 @@ function PortfolioInner() {
   const walletUsdg = isEvm ? (chainBal?.usdg ?? 0) : portfolio.cashUsd;
   const totalValue = vaultValue + walletUsdg;
   const loadingChain = isEvm && chainBal === null;
+  // Real-wallet mode: practice (simulated) holdings and ledger rows are hidden unless asked for, and then labelled "Practice".
+  const [includePractice, setIncludePractice] = useState(false);
+  const showPractice = !isEvm || includePractice;
+  const practiceCount = rows.length + portfolio.ledger.filter((l) => !l.txHash).length;
   const pending = rows.filter((r) => r.requestedWithdrawal);
   const costBasis = rows.reduce((a, b) => a + b.costBasisUsd, 0);
 
   const ledger = portfolio.ledger.filter((l) => {
+    if (!showPractice && !l.txHash) return false;
     if (tab === "flows") return ["deposit", "withdrawal_request", "withdrawal_claim"].includes(l.kind);
     if (tab === "fees") return ["fee_deposit", "trade_fee", "creator_share", "platform_share", "ai_credit"].includes(l.kind);
     if (tab === "pending") return l.state !== "settled";
@@ -130,10 +157,18 @@ function PortfolioInner() {
         </div>
       </div>
 
-      {pending.length > 0 && (
+      {isEvm && chainBal && REQUEST_TEXT[chainBal.request.state] && (
+        <div className="notice notice-warn" data-testid="chain-pending">
+          <div>
+            <strong>Withdrawal in progress.</strong> {chainBal.request.shares.toFixed(4)} shares — {REQUEST_TEXT[chainBal.request.state]}.
+            {chainBal.request.state === "Claimable" ? ` You will receive ${usd(chainBal.request.settledUsd)} USDG.` : " A request is not a completed withdrawal until you claim it."}
+          </div>
+        </div>
+      )}
+      {showPractice && pending.length > 0 && (
         <div className="notice notice-warn">
           <div>
-            <strong>{pending.length} pending withdrawal{pending.length > 1 ? "s" : ""}.</strong>{" "}
+            <strong>{pending.length} pending practice withdrawal{pending.length > 1 ? "s" : ""}{isEvm ? " (simulated)" : ""}.</strong>{" "}
             {pending.map((p) => `${p.agent?.name}: ${p.requestedWithdrawal?.shares.toFixed(2)} shares (${p.requestedWithdrawal?.state.replace(/_/g, " ")})`).join(" · ")}.
             A request is not a completed withdrawal — positions must be closed before settlement.
           </div>
@@ -152,14 +187,30 @@ function PortfolioInner() {
       <div className="card stack">
         <div className="row between" style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)" }}>
           <span className="small strong">Vault holdings</span>
-          <Link href="/explore" className="btn btn-secondary btn-sm">Deposit into another agent</Link>
+          <div className="row gap-12 wrap" style={{ justifyContent: "flex-end" }}>
+            {isEvm && practiceCount > 0 && (
+              <label className="row gap-6 tiny" style={{ cursor: "pointer" }} data-testid="toggle-practice">
+                <input type="checkbox" checked={includePractice} onChange={(e) => setIncludePractice(e.target.checked)} />
+                Show practice entries (simulated)
+              </label>
+            )}
+            <Link href="/explore" className="btn btn-secondary btn-sm">Browse agents</Link>
+          </div>
         </div>
 
-        {rows.length === 0 ? (
+        {(() => {
+          const chainRow = isEvm && chainBal && chainBal.shares > 0 ? chainBal : null;
+          const shownPractice = showPractice ? rows : [];
+          return !chainRow && shownPractice.length === 0;
+        })() ? (
           <Empty
-            title="No vault positions"
-            body="You hold no shares yet. Deposits mint shares at the vault NAV after the 1% + 0.10 USDG fee."
-            action={<Link href="/explore" className="btn btn-primary">Browse agents</Link>}
+            title="No vault positions yet"
+            body={
+              isEvm
+                ? "You don't hold any vault shares. Deposit USDG in the Invest card above — shares are minted at the vault price after the 1% + 0.10 USDG fee."
+                : "You hold no shares yet. Deposits mint shares at the vault NAV after the 1% + 0.10 USDG fee."
+            }
+            action={isEvm ? undefined : <Link href="/explore" className="btn btn-primary">Browse agents</Link>}
           />
         ) : (
           <div className="table-wrap">
@@ -177,7 +228,26 @@ function PortfolioInner() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {isEvm && chainBal && chainBal.shares > 0 && (
+                  <tr data-testid="chain-holding">
+                    <td>
+                      <div className="stack" style={{ gap: 1, minWidth: 0 }}>
+                        <Link href={`/agents/${VAULT_AGENT_ID}`} className="strong">Covar vault</Link>
+                        <div className="tiny">Robinhood Chain · USDG</div>
+                      </div>
+                    </td>
+                    <td><span className="badge badge-green">On-chain</span></td>
+                    <td className="right num">{chainBal.shares.toFixed(2)}</td>
+                    <td className="right num tiny">{chainBal.nav.toFixed(4)}</td>
+                    <td className="right num strong">{usd(chainBal.vault)}</td>
+                    <td className="right num faint">—</td>
+                    <td className="right num faint">—</td>
+                    <td>
+                      <span className="small">{REQUEST_TEXT[chainBal.request.state] ? "In progress" : "Use the Invest card"}</span>
+                    </td>
+                  </tr>
+                )}
+                {(showPractice ? rows : []).map((r) => (
                   <tr key={r.agentId}>
                     <td>
 <div className="row gap-10" style={{ flexWrap: "nowrap" }}>
@@ -188,7 +258,7 @@ function PortfolioInner() {
                       </div>
                     </div>
                     </td>
-                    <td>{r.agent && <ProvenanceBadge kind={r.agent.provenance} />}</td>
+                    <td>{isEvm ? <span className="badge badge-outline">Practice</span> : r.agent && <ProvenanceBadge kind={r.agent.provenance} />}</td>
                     <td className="right num">{r.shares.toFixed(2)}</td>
                     <td className="right num tiny">{r.nav.toFixed(4)}</td>
                     <td className="right num strong">{usd(r.value)}</td>
@@ -266,6 +336,13 @@ function PortfolioInner() {
               </tr>
             </thead>
             <tbody>
+              {ledger.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="small muted" style={{ padding: "18px 14px", textAlign: "center" }}>
+                    {isEvm ? "No on-chain activity yet. Your deposits, withdrawals and claims will appear here with their transaction links." : "Nothing here yet."}
+                  </td>
+                </tr>
+              )}
               {ledger.map((l) => (
                 <tr key={l.id}>
                   <td className="tiny nowrap">{dateTime(l.ts)}</td>
@@ -297,7 +374,7 @@ function PortfolioInner() {
                       {l.state}
                     </span>
                   </td>
-                  <td className="mono tiny">{l.txHash ?? <span className="faint">simulated</span>}</td>
+                  <td className="mono tiny">{l.txHash ?? <span className="faint">{isEvm ? "practice · simulated" : "simulated"}</span>}</td>
                 </tr>
               ))}
             </tbody>
