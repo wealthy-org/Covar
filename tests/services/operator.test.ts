@@ -209,6 +209,12 @@ async function unitMonitor() {
     {},
     DEFAULT_MONITOR,
   ).map((x) => x.code.split(":")[0]);
+  {
+    const fresh = evaluate({ now, services: [{ name: "operator", ok: true, body: { lastCycle: null, startedAt: new Date(now - 20_000).toISOString() } }] }, {}, DEFAULT_MONITOR);
+    ok("operator that just started (no cycle yet) is not reported as stalled", !fresh.map((a) => a.code).includes("OPERATOR_STALLED"), fresh);
+    const hung = evaluate({ now, services: [{ name: "operator", ok: true, body: { lastCycle: null, startedAt: new Date(now - 60 * 60_000).toISOString() } }] }, {}, DEFAULT_MONITOR);
+    ok("operator up for an hour without any cycle is stalled", hung.map((a) => a.code).includes("OPERATOR_STALLED"), hung);
+  }
   ok("stalled operator, delayed withdrawal, underfunded claims, low gas, close-only", ["OPERATOR_STALLED", "WITHDRAWAL_DELAYED", "CLAIMS_UNDERFUNDED", "OPERATOR_GAS_LOW", "VAULT_CLOSE_ONLY"].every((c) => p.includes(c)), p);
   ok("vault unreadable → critical", evaluate({ now, services: [], vault: { error: "timeout" } }, {}, DEFAULT_MONITOR)[0]?.code === "VAULT_UNREADABLE");
   const hb: string[] = [];

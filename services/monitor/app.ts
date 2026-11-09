@@ -47,7 +47,11 @@ export function evaluate(o: Observation, failures: Record<string, number>, cfg: 
     }
     if (s.name === "operator" && s.ok && s.body) {
       const last = typeof s.body.lastCycle === "string" ? Date.parse(s.body.lastCycle) : NaN;
-      if (!Number.isFinite(last) || o.now - last > cfg.operatorStallMs) {
+      const started = typeof s.body.startedAt === "string" ? Date.parse(s.body.startedAt) : NaN;
+      // No cycle yet right after a (re)start is normal: only stalled once the
+      // operator has been up longer than the stall window without finishing one.
+      const justStarted = !Number.isFinite(last) && Number.isFinite(started) && o.now - started <= cfg.operatorStallMs;
+      if (!justStarted && (!Number.isFinite(last) || o.now - last > cfg.operatorStallMs)) {
         out.push({ level: "critical", code: "OPERATOR_STALLED", message: `operator is up but its last cycle was ${Number.isFinite(last) ? `${Math.round((o.now - last) / 1000)}s ago` : "never"}` });
       }
     }

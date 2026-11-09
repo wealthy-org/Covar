@@ -275,6 +275,12 @@ Kalau execution plane belum perlu, cukup host indexer agar `/treasury`, Discover
 5. Isi `INDEXER_URL=https://<domain>` di Vercel.
 
 ### 6.2 Execution plane (Railway/Fly/VPS)
+
+> **Staging/soak tanpa trading (vault-only NAV):** cukup satu service Railway kedua dengan start `pnpm ops`
+> (= operator + monitor saja, saling cek lewat 127.0.0.1). Env minimal: `OPERATOR_VAULT_ADDRESS`, `OPERATOR_CHAIN=testnet`,
+> `OPERATOR_ADDRESS` (B), `OPERATOR_MODE=dry-run` → `live` + `OPERATOR_PRIVATE_KEY`, `OPERATOR_VENUE=none`,
+> `MONITOR_TARGETS=operator=http://127.0.0.1:4014,indexer=https://<domain-indexer>`, `TELEGRAM_*`, `COVAR_STATE_DIR=/data` + volume di `/data`.
+> Tanpa domain publik. Execution/risk/signer/venue baru diperlukan saat trading Lighter.
 1. Buat service dari repo yang sama dengan perintah start `pnpm services`. Kalau alamat vault di-set, perintah ini sekaligus menyalakan **operator** (:4014), **indexer** (:4016), dan **monitor** (:4015) selain execution/risk/signer/venue.
 2. Pasang **persistent volume** di `COVAR_STATE_DIR` (default `.covar-state/`). Isinya journal audit untuk rekonsiliasi setelah restart, jadi jangan sampai hilang.
 3. Ekspos publik **hanya** port execution (4010) dan indexer (4016, hanya-baca) bila web berada di host lain. Risk, signer, venue, operator, dan monitor tetap internal.

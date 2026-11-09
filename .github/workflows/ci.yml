@@ -1,0 +1,70 @@
+name: ci
+
+# Runs every layer of verification. Any red step blocks a merge to main.
+# E2E prices/copilot tests tolerate an unreachable public API (they assert the
+# honest failure label instead of numbers), so CI does not depend on third-party
+# endpoints being reachable from the runner.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: covar/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: covar
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: covar
+        run: pnpm exec tsc --noEmit
+
+      - name: Engine tests
+        working-directory: covar
+        run: pnpm test
+
+      - name: Service tests (crash / idempotency reconciliation)
+        working-directory: covar
+        run: pnpm test:services
+
+      - name: Contract tests
+        working-directory: covar
+        run: pnpm test:contracts
+
+      - name: Database schema (SQLite, dev)
+        working-directory: covar
+        run: pnpm exec prisma migrate deploy
+
+      - name: Web build
+        working-directory: covar
+        run: pnpm build
+
+      - name: Browser E2E (gate, builder, practice, labels)
+        working-directory: covar
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec playwright test
+
+      - name: Local-chain rehearsal (deposit → trade under pause → withdraw, indexed)
+        working-directory: covar
+        run: |
+          pnpm exec hardhat node &
+          HH_PID=$!
+          for i in $(seq 1 30); do curl -s -m 2 http://127.0.0.1:8545 >/dev/null 2>&1 && break || sleep 1; done
+          pnpm rehearse:e2e
+          EXIT=$?
+          kill $HH_PID || true
+          exit $EXIT

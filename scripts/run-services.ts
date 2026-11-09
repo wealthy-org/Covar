@@ -3,6 +3,8 @@
  * its own append-only journal.
  *
  *   npm run services          # foreground, logs interleaved
+ *   npm run ops               # operator + monitor only (= --only operator,monitor)
+ *   COVAR_SERVICES=operator,monitor npm run services   # same, via env
  *   npm run demo:reconcile    # one-shot crash/restart proof in a temp dir
  */
 import "dotenv/config";
@@ -26,10 +28,28 @@ if (hasVault) {
   // 3.6: chain-log indexer behind Discover / agent record / treasury (/api/vault/summary)
   services.push({ name: "indexer", port: Number(process.env.INDEXER_PORT || 4016), entry: "services/indexer/main.ts" });
 }
+// COVAR_SERVICES=operator,monitor runs a subset (e.g. a Railway "ops" service
+// next to a separate indexer service). Monitor is included unless filtered out.
+const onlyArg = process.argv.indexOf("--only");
+const only = ((onlyArg > -1 ? process.argv[onlyArg + 1] : "") || process.env.COVAR_SERVICES || "")
+  .split(/[,;\s]+/)
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+if (only.length) {
+  if (only.includes("operator") && !hasVault) {
+    console.error("COVAR_SERVICES includes operator but no OPERATOR_VAULT_ADDRESS is set.");
+    process.exit(1);
+  }
+  for (let i = services.length - 1; i >= 0; i--) if (!only.includes(services[i].name)) services.splice(i, 1);
+}
 if (!process.env.MONITOR_TARGETS) {
   env.MONITOR_TARGETS = services.map((s) => `${s.name}=http://127.0.0.1:${s.port}`).join(",");
 }
-services.push({ name: "monitor", port: 4015, entry: "services/monitor/main.ts" });
+if (!only.length || only.includes("monitor")) services.push({ name: "monitor", port: 4015, entry: "services/monitor/main.ts" });
+if (!services.length) {
+  console.error(`COVAR_SERVICES="${process.env.COVAR_SERVICES}" matches no service (exchange, risk, signer, execution, operator, indexer, monitor).`);
+  process.exit(1);
+}
 
 const children: ChildProcess[] = [];
 

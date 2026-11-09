@@ -20,6 +20,7 @@ import { alertSinkFromEnv } from "../monitor/alerts";
 
 const env = process.env;
 const PORT = Number(env.OPERATOR_PORT || 4014);
+const STARTED_AT = new Date().toISOString(); // lets the monitor tell "just started" from "stalled"
 const STATE_DIR = env.COVAR_STATE_DIR || path.join(process.cwd(), ".covar-state");
 const INTERVAL = Math.max(10, Number(env.OPERATOR_INTERVAL_SEC || 60));
 const live = env.OPERATOR_MODE === "live";
@@ -86,7 +87,7 @@ async function main() {
   };
 
   serve("operator", PORT, [
-    { method: "GET", path: "/health", handler: () => ({ body: { ok: true, mode: live ? "live" : "dry-run", lastCycle: op.last()?.at ?? null, vault: vaultAddr } }) },
+    { method: "GET", path: "/health", handler: () => ({ body: { ok: true, mode: live ? "live" : "dry-run", lastCycle: op.last()?.at ?? null, startedAt: STARTED_AT, vault: vaultAddr } }) },
     { method: "GET", path: "/state", handler: () => ({ body: op.last() ?? { note: "no cycle yet" } }) },
     { method: "POST", path: "/cycle", handler: async () => ({ body: await op.cycle() }) },
     { method: "GET", path: "/journal", handler: () => ({ body: op.journalEntries() }) },

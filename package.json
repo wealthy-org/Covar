@@ -26,6 +26,7 @@
     "deploy:local": "node scripts/hardhat.mjs run scripts/deploy-local.ts --network localhost",
     "test:services": "tsx tests/services/reconciliation.test.ts && tsx tests/services/lighter.test.ts && tsx tests/services/operator.test.ts && tsx tests/services/auth.test.ts && tsx tests/services/indexer.test.ts && tsx tests/services/credits.test.ts",
     "services": "tsx scripts/run-services.ts",
+    "ops": "tsx scripts/run-services.ts --only operator,monitor",
     "demo:reconcile": "tsx scripts/demo-reconcile.ts",
     "indexer": "tsx services/indexer/main.ts",
     "rehearse:e2e": "node scripts/hardhat.mjs run scripts/e2e-rehearsal.ts --network localhost",
