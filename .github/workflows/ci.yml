@@ -22,44 +22,35 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: covar/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Install
-        working-directory: covar
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        working-directory: covar
         run: pnpm exec tsc --noEmit
 
       - name: Engine tests
-        working-directory: covar
         run: pnpm test
 
-      - name: Service tests (crash / idempotency reconciliation)
-        working-directory: covar
-        run: pnpm test:services
-
-      - name: Contract tests
-        working-directory: covar
+      - name: Contract tests (also compiles artifacts/ used by the operator/indexer service tests)
         run: pnpm test:contracts
 
+      - name: Service tests (crash / idempotency reconciliation)
+        run: pnpm test:services
+
       - name: Database schema (SQLite, dev)
-        working-directory: covar
         run: pnpm exec prisma migrate deploy
 
       - name: Web build
-        working-directory: covar
         run: pnpm build
 
       - name: Browser E2E (gate, builder, practice, labels)
-        working-directory: covar
         run: |
           pnpm exec playwright install --with-deps chromium
           pnpm exec playwright test
 
       - name: Local-chain rehearsal (deposit → trade under pause → withdraw, indexed)
-        working-directory: covar
         run: |
           pnpm exec hardhat node &
           HH_PID=$!
