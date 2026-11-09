@@ -310,7 +310,7 @@ Kalau execution plane belum perlu, cukup host indexer agar `/treasury`, Discover
 | `NEXT_PUBLIC_WALLET_PROVIDER` | `evm` |
 | `DATABASE_URL` | Neon pooled |
 | `DIRECT_URL` | Neon direct |
-| `AI_PROVIDER` / `AI_PROVIDER_API_KEY` / `AI_MODEL` | `orbio` / `sk-orbio-…` / opsional |
+| `AI_PROVIDER` / `AI_PROVIDER_API_KEY` / `AI_MODEL` | `orbio` / `sk-orbio-…` / opsional — atau untuk staging gratis: `groq` / `gsk_…` / kosong (default `openai/gpt-oss-20b`; free tier 30 req/menit, 1.000/hari per organisasi) |
 | `APP_ORIGIN` | `https://testnet.covar.xyz` (domain staging; SIWE terikat ke origin ini) |
 | `INDEXER_URL` | URL indexer (6.2), dibaca server saja |
 | `CREDITS_MODE` / `CREDITS_TREASURY_ADDRESS` | `enforce` / alamat penerima top-up (mis. wallet C) |
