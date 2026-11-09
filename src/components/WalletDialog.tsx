@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCovar } from "@/lib/store";
 import { getWalletProvider } from "@/lib/wallet";
 import { Modal } from "./ui";
 import { shortAddr, usd } from "@/lib/format";
-import { signInWithEthereum, signOut, useAuth } from "@/lib/session";
-import { injected } from "@/lib/vaultTx";
+import { currentWalletAccount, signInWithEthereum, signOut, useAuth } from "@/lib/session";
+import { formatUnits, injected, readAccount } from "@/lib/vaultTx";
+import { CHAINS, EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
 import { useCredits } from "@/lib/creditsClient";
 
 export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -15,6 +16,46 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
   const auth = useAuth();
   const credits = useCredits();
   const [authErr, setAuthErr] = useState<string | null>(null);
+  // A real browser wallet: show its real USDG balance from the chain, never the practice ledger.
+  const isEvm = (walletProviderId ?? getWalletProvider().id) === "evm";
+  // Which account the browser wallet exposes right now (it can differ from the signed-in one).
+  const [walletAcct, setWalletAcct] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const eth = injected();
+    void currentWalletAccount().then(setWalletAcct);
+    const onAcc = (a: string[]) => setWalletAcct(a?.[0] ?? null);
+    eth?.on?.("accountsChanged", onAcc);
+    return () => eth?.removeListener?.("accountsChanged", onAcc);
+  }, [open]);
+  const mismatch = auth.status === "signed-in" && !!auth.user && !!walletAcct && walletAcct.toLowerCase() !== auth.user.address.toLowerCase();
+  const signIn = (pickAccount: boolean) => {
+    setAuthErr(null);
+    void signInWithEthereum({ pickAccount }).then((r) => !r.ok && setAuthErr(r.error ?? "Sign-in failed"));
+  };
+  const switchAccount = async () => {
+    await signOut();
+    signIn(false);
+  };
+
+  const [chainUsdg, setChainUsdg] = useState<{ v: bigint | null; err?: string }>({ v: null });
+  useEffect(() => {
+    if (!open || !isEvm || !VAULT_ADDRESS || !portfolio.wallet?.startsWith("0x")) return;
+    let cancelled = false;
+    setChainUsdg({ v: null });
+    (async () => {
+      try {
+        const v = await readVault(VAULT_ADDRESS);
+        const a = await readAccount(VAULT_ADDRESS, v.asset, portfolio.wallet, EXPECTED_CHAIN_ID);
+        if (!cancelled) setChainUsdg({ v: a.usdgBalance });
+      } catch (e) {
+        if (!cancelled) setChainUsdg({ v: null, err: (e as Error).message });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isEvm, portfolio.wallet]);
 
   const copy = async () => {
     try {
@@ -27,7 +68,7 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Connected wallet" subtitle="Development session wallet">
+    <Modal open={open} onClose={onClose} title="Connected wallet" subtitle={isEvm ? "Your browser wallet" : "Development session wallet"}>
       <div className="stack gap-16">
         <div className="notice notice-warn">
           <div>
@@ -53,6 +94,17 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
                 <span className="mono">{shortAddr(auth.user.address, 8)}</span> · proven by a Sign-In with Ethereum signature. Your
                 strategies, practice runs and history sync to this account on any device.
               </span>
+              {mismatch && walletAcct && (
+                <div className="notice notice-warn" data-testid="account-mismatch">
+                  <span className="small">
+                    Your wallet is now on <span className="mono">{shortAddr(walletAcct, 6)}</span>, but you are signed in as{" "}
+                    <span className="mono">{shortAddr(auth.user.address, 6)}</span>.
+                  </span>
+                  <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => void switchAccount()}>
+                    Sign in as {shortAddr(walletAcct, 4)}
+                  </button>
+                </div>
+              )}
               <button className="btn btn-secondary btn-sm" onClick={() => void signOut()}>
                 Sign out
               </button>
@@ -65,13 +117,15 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
               <button
                 className="btn btn-primary btn-sm"
                 disabled={auth.status === "signing" || !injected()}
-                onClick={() => {
-                  setAuthErr(null);
-                  void signInWithEthereum().then((r) => !r.ok && setAuthErr(r.error ?? "Sign-in failed"));
-                }}
+                onClick={() => signIn(false)}
               >
-                {injected() ? "Sign in with Ethereum" : "Install MetaMask or Rabby to sign in"}
+                {injected() ? (walletAcct ? `Sign in with Ethereum as ${shortAddr(walletAcct, 4)}` : "Sign in with Ethereum") : "Install MetaMask or Rabby to sign in"}
               </button>
+              {injected() && (
+                <button className="btn btn-secondary btn-sm" disabled={auth.status === "signing"} onClick={() => signIn(true)} data-testid="siwe-pick-account">
+                  Use a different wallet account…
+                </button>
+              )}
               {(authErr ?? auth.error) && (
                 <span className="tiny" role="alert" style={{ color: "var(--negative)" }}>
                   {authErr ?? auth.error}
@@ -112,8 +166,18 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
 
         <div className="row gap-12">
           <div className="panel grow" style={{ padding: 14 }}>
-            <span className="tiny">USDG balance</span>
-            <div className="strong num">{usd(portfolio.cashUsd)}</div>
+            <span className="tiny">USDG balance{isEvm ? " · on-chain" : " · practice"}</span>
+            <div className="strong num" data-testid="wallet-usdg">
+              {!isEvm
+                ? usd(portfolio.cashUsd)
+                : !VAULT_ADDRESS
+                  ? "—"
+                  : chainUsdg.v !== null
+                    ? `${formatUnits(chainUsdg.v, 6, 2)} USDG`
+                    : chainUsdg.err
+                      ? "unreadable"
+                      : "…"}
+            </div>
           </div>
           <div className="panel grow" style={{ padding: 14 }}>
             <span className="tiny">Copilot credits</span>
@@ -121,10 +185,17 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
           </div>
         </div>
 
-        <p className="small">
-          Balances on this card are the practice session&apos;s. Real deposits go through the <strong>Invest · on-chain</strong>{" "}
-          panel (Portfolio, or an agent with a deployed vault) and are signed in your own wallet.
-        </p>
+        {isEvm ? (
+          <p className="small">
+            USDG balance is read from {CHAINS[EXPECTED_CHAIN_ID].name} for this address. Deposits and withdrawals go through the{" "}
+            <strong>Invest · on-chain</strong> panel and are signed in your own wallet.
+          </p>
+        ) : (
+          <p className="small">
+            Balances on this card are the practice session&apos;s. Real deposits go through the <strong>Invest · on-chain</strong>{" "}
+            panel (Portfolio, or an agent with a deployed vault) and are signed in your own wallet.
+          </p>
+        )}
       </div>
     </Modal>
   );

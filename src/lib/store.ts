@@ -1,5 +1,6 @@
 "use client";
 
+import { mergeChainActivity, type VaultEvent } from "./chainActivity";
 import { useSyncExternalStore } from "react";
 import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, NotificationKind, PracticeRun, Strategy } from "./types";
 import { vaultFeed } from "./vaultAgent";
@@ -244,24 +245,39 @@ export const actions = {
   async adoptAccount(address: string) {
     if (syncTimer) clearTimeout(syncTimer);
     const owner = address.toLowerCase();
+    // The signed-in (SIWE-proven) address IS the wallet shown everywhere. Older
+    // server copies may carry whatever address was connected before sign-in.
+    const asSigned = (s: CovarState): CovarState => ({
+      ...s,
+      owner,
+      walletConnected: true,
+      walletProviderId: "evm",
+      walletGuarantee: "Ownership proven by a Sign-In with Ethereum signature (EIP-4361). No transaction, no gas.",
+      portfolio: { ...s.portfolio, wallet: address },
+    });
     if (state.owner === owner && isDirty()) {
       // same account signing in again with unsynced local edits: keep them, push them
-      void pushNow();
+      set(asSigned(state));
       return;
     }
     try {
       const data = await fetch("/api/state", { cache: "no-store" }).then((r) => r.json());
       if (data?.ok && data.state) {
-        state = { ...data.state, owner, savedAt: data.savedAt } as CovarState;
-        persist();
-        emit();
+        const server = { ...data.state, savedAt: data.savedAt } as CovarState;
+        const fixed = asSigned(server);
+        if (server.portfolio?.wallet?.toLowerCase() !== owner) set(fixed); // repair + sync the stored copy
+        else {
+          state = fixed;
+          persist();
+          emit();
+        }
         return;
       }
     } catch {
       /* fall through: keep working locally */
     }
-    const base = state.owner && state.owner !== owner ? { ...seedState(), walletConnected: state.walletConnected, walletProviderId: state.walletProviderId, walletGuarantee: state.walletGuarantee } : state;
-    set({ ...base, owner });
+    const base = state.owner && state.owner !== owner ? seedState() : state;
+    set(asSigned(base));
   },
 
   /** Signed out: this device forgets the account's data (the server keeps it). */
@@ -280,8 +296,22 @@ export const actions = {
   recordChainTx(input: { kind: "deposit" | "withdrawal_request" | "withdrawal_claim"; label: string; amountUsd: number; txHash: string; agentId?: string; note?: string }) {
     if (state.portfolio.ledger.some((l) => l.txHash === input.txHash)) return;
     const row: LedgerRow = { id: `tx-${input.txHash.slice(2, 14)}`, ts: new Date().toISOString(), state: input.kind === "withdrawal_request" ? "pending" : "settled", ...input };
-    const next = { ...state, portfolio: { ...state.portfolio, ledger: [row, ...state.portfolio.ledger] } };
+    // the vault holds one request per investor: a claim completes every earlier on-chain request
+    const prior = input.kind === "withdrawal_claim"
+      ? state.portfolio.ledger.map((l) => (l.kind === "withdrawal_request" && l.state === "pending" && l.txHash ? { ...l, state: "settled" as const } : l))
+      : state.portfolio.ledger;
+    const next = { ...state, portfolio: { ...state.portfolio, ledger: [row, ...prior] } };
     set(pushNotification(next, { kind: "money", title: input.label, body: `Confirmed on-chain · ${input.txHash.slice(0, 10)}…`, href: "/portfolio" }));
+  },
+
+  /**
+   * Fills the ledger from the chain: confirmed vault transactions of the signed-in
+   * wallet that this device never recorded, with their real tx hashes.
+   */
+  syncChainActivity(events: VaultEvent[], opts: { decimals?: number; symbol?: string; agentId?: string } = {}) {
+    const r = mergeChainActivity(state.portfolio.ledger, events, opts);
+    if (r.added || r.updated) set({ ...state, portfolio: { ...state.portfolio, ledger: r.ledger } });
+    return r;
   },
 
   disconnectWallet() {

@@ -91,18 +91,29 @@ test.afterEach(async ({ page }, info) => {
   fs.appendFileSync(path.join("test-results", "e2e-failure.txt"), report + "\n\n");
 });
 
-async function installWallet(page: Page, key: string) {
+async function installWallet(page: Page, key: string | string[], startChain = "0x7a69") {
+  let walletChain = startChain; // e.g. "0x1": the wallet starts on Ethereum mainnet
   const provider = new JsonRpcProvider(RPC, undefined, { cacheTimeout: -1 });
-  const wallet = new Wallet(key, provider);
+  // several accounts like a real extension; window.__covarSelect(i) switches the active one
+  const wallets = (Array.isArray(key) ? key : [key]).map((k) => new Wallet(k, provider));
+  let wallet = wallets[0];
+  await page.exposeFunction("__covarSelectAccount", async (i: number) => {
+    wallet = wallets[i];
+    return wallet.address;
+  });
   await page.exposeFunction("__covarWallet", async (method: string, params: unknown[]) => {
     try {
       switch (method) {
+        case "wallet_requestPermissions":
+          return { result: [{ parentCapability: "eth_accounts" }] };
         case "eth_requestAccounts":
         case "eth_accounts":
           return { result: [wallet.address] };
         case "eth_chainId":
-          return { result: "0x7a69" };
+          return { result: walletChain };
         case "wallet_switchEthereumChain":
+          walletChain = (params[0] as { chainId: string }).chainId;
+          return { result: null };
         case "wallet_addEthereumChain":
           return { result: null };
         case "personal_sign":
@@ -122,18 +133,29 @@ async function installWallet(page: Page, key: string) {
   });
   await page.addInitScript(() => {
     const w = window as unknown as { ethereum: unknown; __covarWallet: (m: string, p: unknown[]) => Promise<{ result?: unknown; error?: { code: number; message: string; data?: unknown } }> };
+    // EIP-1193 events like a real wallet: chainChanged fires after a network switch
+    const listeners: Record<string, Set<(v: unknown) => void>> = {};
     w.ethereum = {
       isMetaMask: true,
       request: async ({ method, params }: { method: string; params?: unknown[] }) => {
         const r = await w.__covarWallet(method, params ?? []);
         if (r.error) throw Object.assign(new Error(r.error.message), r.error);
+        if (method === "wallet_switchEthereumChain") {
+          const id = (params?.[0] as { chainId: string }).chainId;
+          listeners.chainChanged?.forEach((fn) => fn(id));
+        }
         return r.result;
       },
-      on: () => undefined,
-      removeListener: () => undefined,
+      on: (ev: string, fn: (v: unknown) => void) => void (listeners[ev] ??= new Set()).add(fn),
+      removeListener: (ev: string, fn: (v: unknown) => void) => void listeners[ev]?.delete(fn),
+    };
+    // the user picks another account in the extension → accountsChanged
+    (w as unknown as { __covarSelect: (i: number) => Promise<void> }).__covarSelect = async (i: number) => {
+      const addr = await (w as unknown as { __covarSelectAccount: (i: number) => Promise<string> }).__covarSelectAccount(i);
+      listeners.accountsChanged?.forEach((fn) => fn([addr]));
     };
   });
-  return wallet;
+  return wallets[0];
 }
 
 const usdgOf = async (addr: string) => {
@@ -143,7 +165,8 @@ const usdgOf = async (addr: string) => {
 
 test("investor: SIWE sign-in → approve → deposit → withdraw → operator settles → claim", async ({ page }) => {
   test.setTimeout(240_000);
-  const investor = await installWallet(page, keyOf(ROLES.investor));
+  // the wallet starts on Ethereum mainnet (chain 1): sign-in must switch it, not fail
+  const investor = await installWallet(page, keyOf(ROLES.investor), "0x1");
   const before = await usdgOf(investor.address);
 
   await page.goto("/portfolio");
@@ -155,6 +178,9 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
   await siwe.getByRole("button", { name: "Sign in with Ethereum" }).click();
   await expect(siwe.getByText("Signed in", { exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(siwe).toContainText(investor.address.slice(0, 8).toLowerCase(), { ignoreCase: true });
+  // a real browser wallet shows its real USDG balance from the chain, not the practice ledger
+  await expect(page.getByText("Your browser wallet")).toBeVisible();
+  await expect(page.getByTestId("wallet-usdg")).toHaveText("500 USDG", { timeout: 20_000 });
   await page.keyboard.press("Escape");
 
   const panel = page.getByTestId("invest-panel");
@@ -214,9 +240,48 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
   await expect
     .poll(async () => {
       const s = await page.evaluate(async () => (await fetch("/api/state", { cache: "no-store" })).json());
-      return (s.state?.portfolio?.ledger ?? []).filter((l: { txHash?: string }) => /^0x[0-9a-f]{64}$/.test(l.txHash ?? "")).map((l: { kind: string }) => l.kind).sort().join(",");
+      return (s.state?.portfolio?.ledger ?? []).filter((l: { txHash?: string }) => /^0x[0-9a-f]{64}$/.test(l.txHash ?? "")).map((l: { kind: string; state: string }) => `${l.kind}:${l.state}`).sort().join(",");
     }, { timeout: 20_000 })
-    .toBe("deposit,withdrawal_claim,withdrawal_request");
+    .toBe("deposit:settled,withdrawal_claim:settled,withdrawal_request:settled"); // the claim completes the request
+});
+
+test("account switch: header and SIWE follow the wallet account that actually signed", async ({ page }) => {
+  test.setTimeout(120_000);
+  const other = new Wallet(keyOf(ROLES.owner)).address;
+  const investor = new Wallet(keyOf(ROLES.investor)).address;
+  await installWallet(page, [keyOf(ROLES.owner), keyOf(ROLES.investor)]);
+  const select = (i: number) => page.evaluate((n) => (window as unknown as { __covarSelect: (i: number) => Promise<void> }).__covarSelect(n), i);
+  const header = page.locator("button.nav-btn[title^='Wallet']").first();
+  const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`.toUpperCase();
+
+  await page.goto("/portfolio");
+  await page.getByRole("button", { name: /connect/i }).first().click();
+  await expect(header).toHaveText(short(other), { ignoreCase: true }); // connected with the first account
+
+  // the user switches the extension to the investor account, then signs in
+  await select(1);
+  await header.click();
+  const siwe = page.getByTestId("siwe-panel");
+  await siwe.getByRole("button", { name: /Sign in with Ethereum as 0x90F7/i }).click();
+  await expect(siwe.getByText("Signed in", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press("Escape");
+  await expect(header).toHaveText(short(investor), { ignoreCase: true }); // header = the SIWE-proven account
+
+  // switching the extension again → the dialog says so and re-signs in one click
+  await select(0);
+  await header.click();
+  await expect(page.getByTestId("account-mismatch")).toBeVisible();
+  await page.getByTestId("account-mismatch").getByRole("button", { name: /Sign in as/ }).click();
+  await expect(siwe.getByText("Signed in", { exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("account-mismatch")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(header).toHaveText(short(other), { ignoreCase: true });
+
+  // the "different account" button opens the wallet's picker (wallet_requestPermissions) and signs in
+  await header.click();
+  await siwe.getByRole("button", { name: "Sign out" }).click();
+  await siwe.getByTestId("siwe-pick-account").click();
+  await expect(siwe.getByText("Signed in", { exact: true })).toBeVisible({ timeout: 20_000 });
 });
 
 test("owner console v2: caps, limits and trading account from the browser", async ({ page }) => {

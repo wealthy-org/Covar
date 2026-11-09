@@ -9,6 +9,13 @@
  */
 import { ethers } from "ethers";
 
+/** Never print provider API keys (Alchemy/Infura/QuickNode put them in the URL path or query). */
+const redact = (text: string) =>
+  text
+    .replace(/(\/v[23]\/)[A-Za-z0-9_-]{8,}/g, "$1***")
+    .replace(/([?&](?:apikey|api_key|key|token)=)[^&\s]+/gi, "$1***")
+    .replace(/(https?:\/\/[^/\s]+\/)[A-Za-z0-9_-]{24,}/g, "$1***");
+
 const NETWORKS: Record<string, { chainId: number; usdg: string; weth: string; rpc: string }> = {
   robinhoodTestnet: {
     chainId: 46630,
@@ -54,11 +61,11 @@ async function main() {
     const chainId = Number((await provider.getNetwork()).chainId);
     record("chain id", chainId === cfg.chainId, `RPC reports ${chainId}, expected ${cfg.chainId}`);
     const block = await provider.getBlockNumber();
-    record("rpc reachable", true, `${cfg.rpc} · block ${block}`);
+    record("rpc reachable", true, `${redact(cfg.rpc)} · block ${block}`);
     const fee = await provider.getFeeData();
     record("gas price", !!fee.gasPrice, `${ethers.formatUnits(fee.gasPrice ?? 0n, "gwei")} gwei`);
   } catch (e) {
-    record("rpc reachable", false, `${cfg.rpc} → ${(e as Error).message.slice(0, 120)}`);
+    record("rpc reachable", false, `${redact(cfg.rpc)} → ${redact((e as Error).message).slice(0, 120)}`);
     record(
       "network hint",
       false,

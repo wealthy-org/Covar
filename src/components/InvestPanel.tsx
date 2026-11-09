@@ -69,6 +69,26 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
     }
   }, [account, chain]);
 
+  // Fill the ledger from the chain (indexer): confirmed vault txs of the signed-in
+  // wallet that this device never recorded — another tab, another device, a lost sync.
+  // Only for the signed-in account, so another wallet's history never lands here.
+  const signedAs = auth.status === "signed-in" ? auth.user?.address.toLowerCase() : undefined;
+  const assetDecimals = vault?.assetDecimals;
+  const syncActivity = useCallback(async () => {
+    if (!VAULT_ADDRESS || !account || !signedAs || account.toLowerCase() !== signedAs) return;
+    try {
+      const r = await fetch(`/api/vault/activity?address=${account}`, { cache: "no-store" }).then((x) => x.json());
+      if (r?.ok && Array.isArray(r.events)) actions.syncChainActivity(r.events, { decimals: assetDecimals ?? 6, agentId });
+    } catch {
+      /* indexer down: the ledger keeps what this device recorded */
+    }
+  }, [account, signedAs, assetDecimals, agentId]);
+  useEffect(() => {
+    void syncActivity();
+    const t = setInterval(() => void syncActivity(), 30_000);
+    return () => clearInterval(t);
+  }, [syncActivity]);
+
   // Poll every 20 s; after a failed read retry in 3 s, so one slow RPC or wallet
   // answer right after a reload doesn't leave the panel on "…" for a whole cycle.
   useEffect(() => {
@@ -194,6 +214,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
       setMsg({ tone: "ok", text: `${label}: confirmed in block ${r.blockNumber}.`, hash });
       after?.(hash);
       await refresh();
+      setTimeout(() => void syncActivity(), 6_000); // once the indexer has the block
     } catch (e) {
       setMsg({ tone: "err", text: e instanceof Error ? e.message : explainError(e) });
     } finally {

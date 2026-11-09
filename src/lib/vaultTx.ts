@@ -18,6 +18,12 @@ type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Prom
 export const injected = (): Eip1193 | null =>
   typeof window === "undefined" ? null : ((window as any).ethereum ?? null);
 
+/** A wallet extension was disabled/reloaded/updated while this tab stayed open. */
+export const STALE_WALLET_MSG =
+  "Your wallet extension was reloaded or turned off after this page opened. Refresh the page (F5) and try again.";
+export const isStaleExtension = (e: unknown): boolean =>
+  /extension context invalidated|disconnected port|receiving end does not exist/i.test(String((e as any)?.message ?? e));
+
 // ----------------------------------------------------------------- selectors
 export const SEL = {
   // vault writes
@@ -278,6 +284,7 @@ function revertData(e: unknown): string | null {
 export function explainError(e: unknown): string {
   const anyE = e as any;
   if (anyE?.code === 4001 || /user (rejected|denied)/i.test(anyE?.message ?? "")) return "Cancelled in the wallet — nothing was sent.";
+  if (isStaleExtension(e)) return STALE_WALLET_MSG;
   const data = revertData(e);
   if (data) {
     const sel = data.slice(0, 10).toLowerCase();

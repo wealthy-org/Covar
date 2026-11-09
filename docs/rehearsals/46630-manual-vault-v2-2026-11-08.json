@@ -1,0 +1,47 @@
+{
+  "chainId": 46630,
+  "date": "2026-11-08",
+  "method": "manual, wallet-signed via localhost /chain/console (MetaMask); hashes, amounts and balances re-read on-chain from the Blockscout API",
+  "vault": "0x9f0172A7B568A9C38557dCD7C31Db9cb78e0f31B",
+  "contractVersion": "v2 (package 3.1: TVL cap 1,000 USDG, per-deposit cap 100 USDG, owner-set trading account, withdrawal fee at settlement)",
+  "deployTx": "0x93fc13a748ddd69bd9fdd58434c20492d3b4c4152859fae96541ad10fc18c31f",
+  "deployBlock": 150482951,
+  "sourceVerification": {
+    "sourcify": "exact_match (creation + runtime) — https://repo.sourcify.dev/46630/0x9f0172A7B568A9C38557dCD7C31Db9cb78e0f31B",
+    "blockscout": "not verified — the testnet explorer's verifier (backend v10.2.6) has an empty compiler list and answers 'Unable to verify'; retry later with pnpm verify:testnet"
+  },
+  "asset": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+  "wallets": {
+    "A_owner": "0x1FBaDaFb2056Af662aa11732e86B28aF550af0d9",
+    "B_operator_and_tradingAccount": "0x3D2FAC269954487a63F51bf059701FbD9647E3Bf",
+    "C_feeRecipient": "0x8b43AC0f705D18D2C42D12EB2fABe3e45e1045B1",
+    "D_investor": "0x141DB8c1C42B0fa5b13eE17136e4E037597886a8"
+  },
+  "setup": [
+    { "step": "A setTradingAccount(B)", "tx": "0x014ff17f0006963725c479c7243a65284063289e48b9facf5d599b1368f1d820", "block": 150490931 }
+  ],
+  "happyPath": [
+    { "step": "B reportNav(0)", "tx": "0x7c539f3b6ce7755e64256a210bbd18f1c276ee4220c3f0b93ee3956a8943741c", "block": 150491088, "time": "2026-11-08T16:24:19Z" },
+    { "step": "D approve(vault, 10 USDG) on the USDG contract", "tx": "0x7fdcc511857b79b34f7adae6133b7765962aef51f315f0fc2324ad976c150511", "block": 150491140 },
+    { "step": "D deposit(10) → 9.8 shares; 0.2 USDG fee to C (same tx)", "tx": "0xd9ab8f4ec5129a0ef59f0d2f29cd55920f80ab5479b8f39ed5fedb618972920c", "block": 150491171 },
+    { "step": "D requestWithdrawal(9.8)", "tx": "0x4abed7f683442dc29a91564e5ffdede36a59c21e19bc5464f80233801904f6c8", "block": 150491232 },
+    { "step": "B markPositionsClosed(D)", "tx": "0xcd28f801d83f8bde98175d48f6e73b69e7852363dc32fae9a5eeb50221cd8142", "block": 150491312 },
+    { "step": "B settleWithdrawal(D, 9.8) → 9.602 claimable; 0.198 USDG withdrawal fee to C at settlement (same tx)", "tx": "0xe46d76baaad70dae23ea7707a63b6246b4e0794e7175442e9daa6252c6af45f8", "block": 150491391 },
+    { "step": "D claim() → +9.602 USDG to D", "tx": "0x692f3bb4b5673a7941cdc73c2847b3ecefe78351c8e6fcfdf32b6c2fcc03046c", "block": 150491455, "time": "2026-11-08T16:25:56Z" }
+  ],
+  "tokenFlows": {
+    "D → vault": "10.000",
+    "vault → C (deposit fee 1% + 0.1)": "0.200",
+    "vault → C (withdrawal fee 1% + 0.1 of 9.8, at settlement)": "0.198",
+    "vault → D (claim)": "9.602",
+    "conservation": "10 = 0.2 + 0.198 + 9.602; vault back to 0"
+  },
+  "failureCases": [
+    { "case": "D deposit 5 USDG", "expected": "BelowMinimum", "result": "pass — rejected in simulation, no tx sent" },
+    { "case": "D deposit 101 USDG", "expected": "DepositTooLarge (per-deposit cap 100)", "result": "pass — rejected in simulation, no tx sent" },
+    { "case": "non-operator allocateToVenue", "expected": "NotOperator", "result": "pass — rejected in simulation (sent from a non-operator account)" },
+    { "case": "B allocateToVenue(1) with 0 free USDG", "expected": "InsufficientLiquidity", "result": "pass — rejected in simulation, no tx sent" },
+    { "case": "deposit with NAV older than 6 h", "expected": "StaleNav", "result": "PENDING — possible after 2026-11-08T22:24:19Z (05:24 WIB 9 Nov) if no reportNav is sent before" }
+  ],
+  "notTested": ["closeOnly mode on v2", "pause/resume on v2 (passed on v1)", "NavJumpTooLarge", "TVL cap (needs > 1,000 USDG)", "real allocation to the trading account and its return", "operator automation against v2", "real trading / venue"]
+}

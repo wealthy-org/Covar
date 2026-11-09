@@ -3,6 +3,8 @@
  *   npx tsx tests/services/indexer.test.ts
  */
 import { buildSummary, type IndexedEvent, type TransferOut } from "../../services/indexer/summary";
+import { mergeChainActivity } from "../../src/lib/chainActivity";
+import type { LedgerRow } from "../../src/lib/types";
 
 let passed = 0;
 let failed = 0;
@@ -89,6 +91,38 @@ const tr = (to: string, value: string, block: number): TransferOut => ({ to, val
   delete e.ts;
   const s = buildSummary({ vault: "0xv", lastBlock: 5, events: [e], transfers: [] });
   check("undated report not plotted", s.navSeries.length === 0 && s.counts.navReports === 1);
+}
+
+/* portfolio ledger backfill from an investor's indexed events (real 46630 shape) */
+{
+  const inv = "0x141DB8c1C42B0fa5b13eE17136e4E037597886a8";
+  const E = (event: string, blockNumber: number, txHash: string, args: Record<string, string>) => ({ event, blockNumber, txHash, logIndex: 0, ts: 1794180000 + blockNumber - 150590000, args: { investor: inv, ...args } });
+  const events = [
+    E("Deposit", 150590385, "0xdep", { assetsIn: "10000000", fee: "200000", shares: "9800000" }),
+    E("WithdrawalRequested", 150590456, "0xreq", { shares: "9800000", at: "1" }),
+    E("PositionsClosed", 150590827, "0xclose", {}),
+    E("WithdrawalSettled", 150590871, "0xsettle", { netAssets: "9602000" }),
+    E("WithdrawalClaimed", 150590945, "0xclaim", { assets: "9602000" }),
+  ];
+  // this device recorded the deposit and the request, but never the claim
+  const ledger: LedgerRow[] = [
+    { id: "r", ts: "2026-11-08T23:22:10Z", kind: "withdrawal_request", label: "Withdrawal requested · 9.8 shares", amountUsd: 9.6, state: "pending", txHash: "0xREQ" },
+    { id: "d", ts: "2026-11-08T23:21:50Z", kind: "deposit", label: "Deposited 10 USDG", amountUsd: 10, state: "settled", txHash: "0xDEP" },
+    { id: "p", ts: "2026-11-01T00:00:00Z", kind: "pnl", label: "practice", amountUsd: 1, state: "settled" },
+  ];
+  const r = mergeChainActivity(ledger, events);
+  const claim = r.ledger.find((l) => l.txHash === "0xclaim");
+  check("missing claim added with its tx hash and amount", r.added === 1 && !!claim && claim.amountUsd === 9.602 && claim.kind === "withdrawal_claim", r.ledger);
+  check("claimed request no longer pending", r.updated === 1 && r.ledger.find((l) => l.id === "r")?.state === "settled");
+  check("rows already recorded are not duplicated (hash case-insensitive)", r.ledger.filter((l) => l.txHash?.toLowerCase() === "0xdep").length === 1);
+  check("close/settle events are not ledger rows; practice rows kept", r.ledger.length === 4 && r.ledger.some((l) => l.id === "p"));
+  check("idempotent", (() => { const again = mergeChainActivity(r.ledger, events); return again.added === 0 && again.updated === 0 && again.ledger === r.ledger; })());
+
+  const empty = mergeChainActivity([], events);
+  const req = empty.ledger.find((l) => l.kind === "withdrawal_request");
+  check("fresh device: full history from the chain", empty.added === 3 && req?.amountUsd === 9.602 && req.state === "settled", empty.ledger);
+  const open = mergeChainActivity([], events.slice(0, 2));
+  check("open request stays pending with no invented amount", open.ledger.find((l) => l.kind === "withdrawal_request")?.state === "pending" && open.ledger.find((l) => l.kind === "withdrawal_request")?.amountUsd === 0);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

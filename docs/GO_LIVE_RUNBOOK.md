@@ -230,6 +230,24 @@ Simpan semua tx hash — itu bukti untuk `docs/rehearsals/46630-manual.json`.
 
 ### 5.8 Deploy ulang **vault v2** (wajib sebelum Fase 6–7)
 
+> **Status 8 Nov 2026:** vault v2 **ter-deploy** di testnet 46630.
+>
+> | | |
+> |---|---|
+> | Vault v2 | `0x9f0172A7B568A9C38557dCD7C31Db9cb78e0f31B` |
+> | Tx deploy | `0x93fc13a748ddd69bd9fdd58434c20492d3b4c4152859fae96541ad10fc18c31f` |
+> | Constructor | asset USDG `0x7E95…802F` · fee recipient C `0x8b43…45B1` · operator B `0x3D2F…E3Bf` |
+> | Limits | TVL 1.000 USDG · per deposit 100 USDG |
+> | Source | **Sourcify exact match** (creation + runtime): https://repo.sourcify.dev/46630/0x9f0172A7B568A9C38557dCD7C31Db9cb78e0f31B |
+> | Blockscout | verifier explorer testnet sedang rusak (backend v10.2.6, daftar compiler kosong → *"Unable to verify"*). Jalankan ulang `pnpm verify:testnet` nanti; tidak ada langkah lain. |
+>
+> **Uji console v2 (8 Nov, 23:22–23:26 WIB): 8/8 ✅** — set trading account, alur 7 langkah (D menerima tepat 9,602 USDG;
+> C menerima 0,2 + 0,198), serta penolakan BelowMinimum, DepositTooLarge, NotOperator, InsufficientLiquidity ✅.
+> Sisa: StaleNav (setelah 05:24 WIB 9 Nov). Bukti: `docs/rehearsals/46630-manual-vault-v2-2026-11-08.json`.
+>
+> Vault v1 `0xe3B2…bc2d` sudah tidak dipakai (manifest-nya diarsip di `deployments/46630-v1.json`).
+> `pnpm verify:*` sekarang memverifikasi ke Sourcify dulu, lalu Blockscout.
+
 1. `git pull`, lalu dengan VPN menyala: `pnpm preflight:testnet` → `pnpm deploy:testnet` → `pnpm verify:testnet`.
 2. Catat alamat vault v2 baru dari `deployments/46630.json`, lalu ganti `NEXT_PUBLIC_COVAR_VAULT_ADDRESS` dan `OPERATOR_VAULT_ADDRESS` (alamat lama v1 jangan dipakai lagi).
 3. Buka `/chain/console` dengan wallet **A**: pastikan kartu **Caps** menampilkan 1.000 / 100 USDG, lalu **Set trading account** = alamat yang menerima dana untuk venue (untuk testnet: wallet B).

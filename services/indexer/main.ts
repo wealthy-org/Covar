@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { redactSecrets } from "../shared/redact";
 import fs from "node:fs";
 import path from "node:path";
 import { Interface, zeroPadValue } from "ethers";
@@ -27,7 +28,7 @@ import { buildSummary, type IndexedEvent, type TransferOut } from "./summary";
  * configured RPC returned it. If the RPC is unreachable, the indexer stays
  * behind and says so in /health.
  *
- *   GET /events   last 200 decoded events
+ *   GET /events   last 200 decoded events (?investor=0x… → that investor's full history)
  *   GET /summary  NAV series, return, drawdown, investors, fees, allocation (+ live reads)
  *   GET /health
  */
@@ -93,13 +94,14 @@ const checkpointFile = path.join(DIR, "indexer.checkpoint.json");
 function loadCheckpoint(): Checkpoint {
   try {
     const cp = JSON.parse(fs.readFileSync(checkpointFile, "utf8")) as Checkpoint;
-    const want = process.env.INDEXER_VAULT_ADDRESS;
+    // the vault this run is configured for (INDEXER_ / OPERATOR_ / NEXT_PUBLIC_ … or the local manifest)
+    const want = resolveVaultAddress();
     // a different vault means a different history: never mix two vaults' events
     if (want && cp.vaultAddress && want.toLowerCase() !== cp.vaultAddress.toLowerCase()) throw new Error("vault changed");
     return cp;
   } catch {
     for (const f of [stateFile, transferFile]) fs.rmSync(f, { force: true });
-    return { vaultAddress: process.env.INDEXER_VAULT_ADDRESS || null, lastBlock: -1, updatedAt: new Date().toISOString() };
+    return { vaultAddress: resolveVaultAddress(), lastBlock: -1, updatedAt: new Date().toISOString() };
   }
 }
 
@@ -197,6 +199,23 @@ async function findDeployBlock(vault: string, latest: number): Promise<number> {
   }
 }
 
+/**
+ * Block range per eth_getLogs. Starts at INDEXER_CHUNK and shrinks when the RPC
+ * refuses the range (e.g. Alchemy free tier: 10 blocks; it even suggests one).
+ */
+let chunk = CHUNK;
+let rangeNote: string | null = null;
+function shrinkChunk(message: string): boolean {
+  if (!/block range|range should work|range is too large|exceed|too many (blocks|results)|limit/i.test(message) || chunk <= 1) return false;
+  const hint = message.match(/\[(0x[0-9a-f]+),\s*(0x[0-9a-f]+)\]/i);
+  const suggested = hint ? Number(BigInt(hint[2]) - BigInt(hint[1])) + 1 : 0;
+  const next = suggested > 0 && suggested < chunk ? suggested : Math.max(1, Math.floor(chunk / 2));
+  rangeNote = `RPC limits eth_getLogs ranges: scanning ${next} blocks per request (was ${chunk}). A public or paid RPC is much faster.`;
+  console.warn(`[indexer] ${rangeNote}`);
+  chunk = next;
+  return true;
+}
+
 async function pollOnce() {
   const vault = checkpoint.vaultAddress ?? resolveVaultAddress();
   checkpoint.vaultAddress = vault;
@@ -210,17 +229,31 @@ async function pollOnce() {
   head = Number(BigInt(await rpc<string>("eth_blockNumber", [])));
   if (checkpoint.lastBlock < 0) checkpoint.lastBlock = (await findDeployBlock(vault, head)) - 1;
 
-  for (let i = 0; i < CHUNKS_PER_POLL && checkpoint.lastBlock < head; i++) {
+  // Small ranges (forced by the RPC) are cheap, so allow more of them per poll.
+  const maxIter = chunk < CHUNK ? Math.max(CHUNKS_PER_POLL, 200) : CHUNKS_PER_POLL;
+  for (let i = 0; i < maxIter && checkpoint.lastBlock < head; i++) {
     const from = checkpoint.lastBlock + 1;
-    const to = Math.min(head, from + CHUNK - 1);
+    const to = Math.min(head, from + chunk - 1);
     // vault logs: ask for every log of the vault, keep our events (see module comment)
-    const logs = await rpc<RawLog[]>("eth_getLogs", [{ address: vault, fromBlock: hex(from), toBlock: hex(to) }]);
+    let logs: RawLog[];
+    try {
+      logs = await rpc<RawLog[]>("eth_getLogs", [{ address: vault, fromBlock: hex(from), toBlock: hex(to) }]);
+    } catch (e) {
+      if (shrinkChunk((e as Error).message)) continue; // retry the same range, smaller
+      throw e;
+    }
     const decoded = logs.filter((l) => KNOWN_TOPICS.has(l.topics[0])).map(decode).filter((e): e is IndexedEvent => e !== null);
     for (const e of decoded) e.ts = await tsOf(e.blockNumber);
     // USDG transfers out of the vault (fees, allocations, claims)
     let transfers: TransferOut[] = [];
     if (meta.asset) {
-      const tl = await rpc<RawLog[]>("eth_getLogs", [{ address: meta.asset, topics: [TRANSFER, zeroPadValue(vault, 32)], fromBlock: hex(from), toBlock: hex(to) }]);
+      let tl: RawLog[];
+      try {
+        tl = await rpc<RawLog[]>("eth_getLogs", [{ address: meta.asset, topics: [TRANSFER, zeroPadValue(vault, 32)], fromBlock: hex(from), toBlock: hex(to) }]);
+      } catch (e) {
+        if (shrinkChunk((e as Error).message)) continue; // nothing was written for this range yet
+        throw e;
+      }
       transfers = tl
         .filter((l) => l.topics[0] === TRANSFER && l.topics[1]?.toLowerCase() === zeroPadValue(vault, 32).toLowerCase())
         .map((l) => ({ to: "0x" + l.topics[2].slice(26), value: BigInt(l.data).toString(), blockNumber: Number(BigInt(l.blockNumber)), txHash: l.transactionHash, logIndex: Number(BigInt(l.logIndex)) }));
@@ -278,7 +311,14 @@ serve("indexer", PORT, [
   {
     method: "GET",
     path: "/events",
-    handler: () => ({ body: { events: readJsonl<IndexedEvent>(stateFile).slice(-200), vault: checkpoint.vaultAddress, lastBlock: checkpoint.lastBlock, lastError } }),
+    // ?investor=0x… → that investor's full history (deposit/request/close/settle/claim), else the last 200 events
+    handler: ({ query }) => {
+      const who = (query.get("investor") ?? "").toLowerCase();
+      if (who && !/^0x[0-9a-f]{40}$/.test(who)) return { status: 400, body: { error: "investor must be a 0x address" } };
+      const all = readJsonl<IndexedEvent>(stateFile);
+      const events = who ? all.filter((e) => (e.args.investor ?? "").toLowerCase() === who) : all.slice(-200);
+      return { body: { events, vault: checkpoint.vaultAddress, lastBlock: checkpoint.lastBlock, head, lastError: lastError ? redactSecrets(lastError) : null } };
+    },
   },
   { method: "GET", path: "/summary", handler: async () => ({ body: await summary() }) },
   {
@@ -294,8 +334,10 @@ serve("indexer", PORT, [
         head,
         behind: head >= 0 ? Math.max(0, head - checkpoint.lastBlock) : null,
         lastPollAt,
-        lastError,
-        rpc: RPC_URL,
+        lastError: lastError ? redactSecrets(lastError) : null,
+        blocksPerRequest: chunk,
+        note: rangeNote,
+        rpc: redactSecrets(RPC_URL),
       },
     }),
   },
@@ -308,7 +350,7 @@ const loop = async () => {
   try {
     await pollOnce();
   } catch (err) {
-    lastError = (err as Error).message;
+    lastError = redactSecrets((err as Error).message);
   } finally {
     polling = false;
   }
