@@ -165,14 +165,25 @@ export function LineChart({
       </svg>
 
       {hover !== null && (
-        <div className="chart-tip" style={{ left: `${(hoverX / W) * 100}%`, top: 8 }}>
+        <div
+          className="chart-tip"
+          style={{
+            left: `${(hoverX / W) * 100}%`,
+            top: 8,
+            // keep the tip inside the chart near either edge
+            transform: hoverX / W > 0.72 ? "translateX(calc(-100% - 12px))" : "translateX(12px)",
+          }}
+        >
           <div className="tiny" style={{ marginBottom: 4 }}>
             {xLabels?.[hover] ?? `point ${hover + 1}`}
           </div>
           {series.map((s) => (
             <div key={s.key} className="row between gap-12" style={{ fontSize: 11.5 }}>
               <span className="row gap-6 muted">
-                <span className="legend-swatch" style={{ background: s.color, width: 9 }} />
+                <span
+                  className="legend-swatch"
+                  style={s.dash ? { width: 9, height: 0, background: "none", borderTop: `2px dashed ${s.color}` } : { background: s.color, width: 9 }}
+                />
                 {s.label}
               </span>
               <span className="num strong">{s.data[hover] !== undefined ? yFormat(s.data[hover]) : "—"}</span>

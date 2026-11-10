@@ -46,17 +46,69 @@ const decision = (
   riskReason?: string
 ): Decision => ({ id, ts: iso(daysAgo, Math.floor(daysAgo * 3) % 20), market, inputs, proposed, aiDecision: ai, riskDecision: risk, order, outcome, riskReason });
 
-const versions = (agentId: string, current: number, base: number, summaries: string[]): VersionEntry[] =>
-  summaries.map((summary, i) => ({
-    version: base + i,
-    ts: iso((summaries.length - i) * 9, 3),
-    summary,
-    status: base + i === current ? "active" : "superseded",
-    notice:
-      base + i === current
-        ? "Active version. Investors were notified 48h before activation."
+/** Copilot's recorded reason per seeded decision (rules-only rows have none — Copilot was not consulted). */
+const AI_REASONS: Record<string, string> = {
+  d1: "Negative funding with expanding open interest matches the carry setup; no event risk in the next 8h.",
+  d2: "Funding near zero is not an exit signal on its own; holding the existing position.",
+  d3: "Fast drop with widening ATR — keep the trade but halve exposure until volatility settles.",
+  d4: "Funding flipped positive, which is the published normalisation exit.",
+  d5: "Leverage above the published 3x ceiling is outside the strategy; declined.",
+  d7: "Oversold at the lower band while the long-term trend is still up — a valid fade entry.",
+  d8: "Price has not recovered; adding the full 5% would stack risk, so half size.",
+  d9: "RSI back above 60 meets the exit rule.",
+  d14: "Trend filters agree and slope is positive; entry allowed at published size.",
+  d15: "Signal is valid on the rules, so Copilot approved; the risk service refused on budget.",
+  d16: "Funding inversion is the published exit trigger.",
+  d17: "Operator flagged an unstable funding regime; pausing new entries is within policy.",
+  d18: "Short signal at resistance, but momentum is strong — trimmed size from 10% to 6%.",
+};
+
+const HOUR = 36e5;
+const NOTICE_HOURS = 48;
+
+interface PendingSeed {
+  summary: string;
+  /** hours since investors were notified */
+  notifiedHoursAgo: number;
+  changes: string[];
+  positionHandling: string;
+}
+
+const versions = (current: number, base: number, summaries: string[], hasInvestors: boolean, pending?: PendingSeed): VersionEntry[] => {
+  const out: VersionEntry[] = summaries.map((summary, i) => {
+    const ts = iso((summaries.length - i) * 9, 3);
+    const isCurrent = base + i === current;
+    return {
+      version: base + i,
+      ts,
+      summary,
+      status: isCurrent ? "active" : "superseded",
+      ...(hasInvestors && i > 0
+        ? { noticeAt: new Date(Date.parse(ts) - NOTICE_HOURS * HOUR).toISOString(), effectiveAt: ts }
+        : { effectiveAt: ts }),
+      notice: isCurrent
+        ? hasInvestors && i > 0
+          ? "Active version. Investors were notified 48h before activation."
+          : "Active version."
         : "Superseded — historical results kept for audit, not recalculated.",
-  }));
+    };
+  });
+  if (pending) {
+    const noticeAt = Date.now() - pending.notifiedHoursAgo * HOUR;
+    out.push({
+      version: base + summaries.length,
+      ts: new Date(noticeAt).toISOString(),
+      summary: pending.summary,
+      status: "pending_investor_notice",
+      noticeAt: new Date(noticeAt).toISOString(),
+      effectiveAt: new Date(noticeAt + NOTICE_HOURS * HOUR).toISOString(),
+      changes: pending.changes,
+      positionHandling: pending.positionHandling,
+      notice: "Published with investors in the vault — waits out the 48h notice before it trades.",
+    });
+  }
+  return out;
+};
 
 export const creators: Creator[] = [
   { id: "cr-01", handle: "meridian", name: "Meridian Research", joined: iso(420), bio: "Systematic perp basis and trend research. Publishes every version change, including the ones that lost money.", agentIds: ["ag-01", "ag-06"], followers: 1284, verified: true },
@@ -70,15 +122,24 @@ const mk = (
   a: Omit<Agent, "curve" | "benchmark" | "twin" | "versions" | "decisions"> & {
     decisions: Decision[];
     versionSummaries: string[];
+    pendingVersion?: PendingSeed;
     twinOffset?: number;
   }
-): Agent => ({
-  ...a,
+): Agent => {
+  const { versionSummaries, pendingVersion, twinOffset, ...rest } = a;
+  return {
+  ...rest,
   curve: curve(a.id + "c", a.returnPct, 120, a.provenance === "backtest" ? 0.009 : 0.016),
   benchmark: bench(a.id, a.provenance === "backtest" ? a.returnPct * 0.42 : a.returnPct * 0.35),
-  twin: curve(a.id + "twin", a.returnPct * (a.twinOffset ?? 0.86), 120, 0.013),
-  versions: versions(a.id, a.version, 1, a.versionSummaries),
-});
+  twin: curve(a.id + "twin", a.returnPct * (twinOffset ?? 0.86), 120, 0.013),
+  decisions: a.decisions.map((d) => ({
+    ...d,
+    strategyVersion: a.version,
+    ...(AI_REASONS[d.id] && d.aiDecision !== "rules_only" ? { aiReason: AI_REASONS[d.id] } : {}),
+  })),
+  versions: versions(a.version, 1, versionSummaries, !!a.vault, pendingVersion),
+  };
+};
 
 export const seedAgents: Agent[] = [
   mk({
@@ -127,6 +188,17 @@ export const seedAgents: Agent[] = [
       "Added drawdown-triggered close-only mode after March gap.",
       "Current: 3x cap, 25% position, rules-only twin per session.",
     ],
+    pendingVersion: {
+      summary: "Tighter stop and a funding z-score exit.",
+      notifiedHoursAgo: 16.5,
+      changes: [
+        "Per-trade stop 2.5% → 2.0%",
+        "New exit: close when 8h funding z-score > +1.5",
+        "Max position unchanged at 25%, leverage cap unchanged at 3x",
+      ],
+      positionHandling:
+        "Positions opened under v4 keep v4 exits until they close. From activation, new entries use v5. Investors can withdraw before activation at the normal fee.",
+    },
   }),
   mk({
     id: "ag-02",
@@ -166,6 +238,7 @@ export const seedAgents: Agent[] = [
       decision("d9", 2.6, "BTC-PERP", "RSI 61", "close", "approve", "approved", "filled @ 97,140", "+$164.22 realized"),
     ],
     versionSummaries: ["Initial fade rules at 1.5x.", "Current: 2x cap, RSI 32 (was 28), added band confluence."],
+    rulesVisibility: "summary",
   }),
   mk({
     id: "ag-03",

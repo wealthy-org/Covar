@@ -118,3 +118,31 @@ test("docs describes what exists today without inflating it", async ({ page }) =
   expect(body).toMatch(/paper matcher/i);
   expect(body).not.toMatch(/indexer does not exist/i);
 });
+
+test("agent detail: legend separates agent / benchmark / twin, and the three record tabs work", async ({ page }) => {
+  await page.goto("/agents/ag-01");
+  const legend = page.getByTestId("chart-legend");
+  await expect(legend).toContainText("Agent");
+  await expect(legend).toContainText("ETH buy & hold");
+  await expect(legend).toContainText("Rules-only twin");
+  await expect(page.getByTestId("copilot-edge")).toContainText(/pts/);
+
+  await page.getByTestId("tab-activity").click();
+  await expect(page.getByTestId("panel-activity")).toContainText(/Copilot · why/i);
+  await expect(page.getByTestId("panel-activity")).toContainText(/carry setup/i); // recorded Copilot reason
+
+  await page.getByTestId("tab-rules").click();
+  await expect(page.getByTestId("panel-rules")).toContainText(/Enter when/i);
+  await page.getByRole("button", { name: "Code" }).click();
+  await expect(page.getByTestId("rules-code")).toContainText('"risk"');
+
+  await page.getByTestId("tab-versions").click();
+  await expect(page).toHaveURL(/#versions$/);
+  await expect(page.getByTestId("pending-version")).toContainText(/pending investor notice/i);
+  await expect(page.getByTestId("notice-countdown")).toContainText(/h \d{2}m left/);
+
+  // private-threshold agent publishes limits but not the conditions
+  await page.goto("/agents/ag-02#rules");
+  await expect(page.getByTestId("panel-rules")).toContainText(/Summary only/);
+  await expect(page.getByTestId("panel-rules")).not.toContainText(/Enter when/i);
+});

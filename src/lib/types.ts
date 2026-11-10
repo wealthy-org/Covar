@@ -67,6 +67,10 @@ export interface Decision {
   riskReason?: string;
   order?: string;
   outcome?: string;
+  /** Copilot's stated reason for its verdict, as recorded at decision time */
+  aiReason?: string;
+  /** strategy version that produced this decision */
+  strategyVersion?: number;
 }
 
 export interface VersionEntry {
@@ -75,6 +79,14 @@ export interface VersionEntry {
   summary: string;
   status: "superseded" | "active" | "pending_investor_notice";
   notice: string;
+  /** when investors were notified (start of the notice window) */
+  noticeAt?: string;
+  /** when the version takes over; for a pending version this is noticeAt + 48h */
+  effectiveAt?: string;
+  /** what happens to positions opened under the previous version */
+  positionHandling?: string;
+  /** itemised rule changes against the previous version */
+  changes?: string[];
 }
 
 export interface VaultInfo {
@@ -117,6 +129,8 @@ export interface Agent {
   riskSummary: string;
   disclosure?: string;
   isMine?: boolean;
+  /** "public": exact rules are published; "summary": thresholds kept private, limits + fingerprint published */
+  rulesVisibility?: "public" | "summary";
 }
 
 export interface Creator {

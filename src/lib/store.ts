@@ -6,7 +6,8 @@ import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, N
 import { vaultFeed } from "./vaultAgent";
 import { getWalletProvider } from "./wallet";
 import { explainError } from "./vaultTx";
-import { seedState } from "./seed";
+import { seedAgents, seedState } from "./seed";
+import { upgradeAgents } from "./versions";
 import { PLATFORM_LIMITS } from "./strategy";
 
 const KEY = "covar.state.v1";
@@ -100,6 +101,11 @@ if (typeof window !== "undefined") {
   });
 }
 
+/** records saved before newer fields existed are upgraded on read, never on the server */
+function upgrade(s: CovarState): CovarState {
+  return s?.agents?.length ? { ...s, agents: upgradeAgents(s.agents, seedAgents) } : s;
+}
+
 async function hydrateFromDb() {
   try {
     const res = await fetch("/api/state", { cache: "no-store" });
@@ -119,7 +125,7 @@ async function hydrateFromDb() {
     if (!data?.ok || !data?.state) return;
     // a different owner's snapshot on this device is never merged — the server copy wins
     if (data.owner && data.owner !== "local" && state.owner !== data.owner) {
-      state = { ...data.state, owner: data.owner, savedAt: data.savedAt } as CovarState;
+      state = upgrade({ ...data.state, owner: data.owner, savedAt: data.savedAt } as CovarState);
       persist();
       emit();
       return;
@@ -127,7 +133,7 @@ async function hydrateFromDb() {
     const serverSaved = Date.parse(data.savedAt ?? data.state.savedAt ?? "");
     const localSaved = Date.parse((state as { savedAt?: string }).savedAt ?? "");
     if (Number.isFinite(serverSaved) && (!Number.isFinite(localSaved) || serverSaved > localSaved)) {
-      state = { ...data.state, savedAt: data.savedAt } as CovarState;
+      state = upgrade({ ...data.state, savedAt: data.savedAt } as CovarState);
       persist();
       emit();
     }
@@ -172,7 +178,7 @@ export function hydrate() {
     if (raw) {
       const parsed = JSON.parse(raw) as CovarState;
       if (parsed?.agents?.length) {
-        state = parsed;
+        state = upgrade(parsed);
         emit();
       }
     }
@@ -385,6 +391,7 @@ export const actions = {
           aiDecision: strategy.copilot.mode === "off" ? "rules_only" : "approve",
           riskDecision: "approved",
           outcome: "awaiting first signal",
+          strategyVersion: 1,
         },
       ],
       versions: [
@@ -393,6 +400,7 @@ export const actions = {
           ts: new Date().toISOString(),
           summary: `v1 published from Studio draft (${strategy.entry.length} entry / ${strategy.exit.length} exit conditions).`,
           status: "active",
+          effectiveAt: new Date().toISOString(),
           notice: "First version — no investor notice required because the vault is not open yet.",
         },
       ],

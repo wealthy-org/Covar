@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { actions, useCovar } from "@/lib/store";
 import { PLATFORM_LIMITS, buildStrategy, opLabel, validateStrategy } from "@/lib/strategy";
 import { PROVENANCE_LABEL } from "@/lib/types";
 import type { Agent, Decision } from "@/lib/types";
-import { cx, dateOnly, dateTime, pct, pctSigned, timeAgo, usd } from "@/lib/format";
+import { cx, dateOnly, dateTime, hashSeed, pct, pctSigned, timeAgo, usd } from "@/lib/format";
+import { activeVersionOf, copilotWhy, fmtRemaining, noticeWindow, resolveVersions } from "@/lib/versions";
 import { VAULT_ADDRESS } from "@/lib/chain";
 import { VAULT_AGENT_ID, chainLabel } from "@/lib/vaultAgent";
 import VaultActivity, { useVaultFeed } from "@/components/VaultActivity";
@@ -29,6 +30,11 @@ const verdictOf = (d: Decision): Verdict =>
   d.riskDecision === "rejected" || d.aiDecision === "reject" ? "skipped" : d.aiDecision === "reduce" ? "reduced" : "took";
 const VERDICT_PILL: Record<Verdict, string> = { took: "pill pill-green", skipped: "pill pill-red", reduced: "pill pill-amber" };
 
+const COPILOT_LABEL = { off: "off · rules only", advisory: "advisory · reviews each signal, can trim size", veto: "veto only · can block a signal" } as const;
+
+type Tab = "activity" | "rules" | "versions";
+const TABS: Tab[] = ["activity", "rules", "versions"];
+
 const RETURN_LABEL: Record<Agent["provenance"], string> = {
   live: "Live return",
   vault: "Vault share price",
@@ -39,9 +45,11 @@ const RETURN_LABEL: Record<Agent["provenance"], string> = {
 
 function csvOf(agent: Agent) {
   const esc = (v: string | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`;
-  const head = ["time", "market", "inputs", "proposed", "copilot", "risk", "risk_reason", "order", "outcome"].join(",");
+  const head = ["time", "market", "strategy_version", "inputs", "proposed", "copilot", "copilot_reason", "risk", "risk_reason", "order", "outcome"].join(",");
   const rows = agent.decisions.map((d) =>
-    [d.ts, d.market, d.inputs, d.proposed, d.aiDecision, d.riskDecision, d.riskReason, d.order, d.outcome].map(esc).join(",")
+    [d.ts, d.market, d.strategyVersion ? `v${d.strategyVersion}` : "", d.inputs, d.proposed, d.aiDecision, d.aiReason, d.riskDecision, d.riskReason, d.order, d.outcome]
+      .map(esc)
+      .join(",")
   );
   return [head, ...rows].join("\n");
 }
@@ -73,7 +81,30 @@ export default function AgentPage() {
   const { toast, node } = useToast();
   const mounted = useMounted();
   const agent = agents.find((a) => a.id === params.id);
-  const [recordTab, setRecordTab] = useState<"decisions" | "changes">("decisions");
+  const [tab, setTab] = useState<Tab>("activity");
+  const [filter, setFilter] = useState<"all" | Verdict>("all");
+  const [rulesView, setRulesView] = useState<"rules" | "code">("rules");
+  const [now, setNow] = useState(() => Date.now());
+
+  // deep link: /agents/ag-01#versions opens that tab
+  useEffect(() => {
+    const fromHash = () => {
+      const h = window.location.hash.replace("#", "") as Tab;
+      if (TABS.includes(h)) setTab(h);
+    };
+    fromHash();
+    window.addEventListener("hashchange", fromHash);
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => {
+      window.removeEventListener("hashchange", fromHash);
+      clearInterval(t);
+    };
+  }, []);
+
+  const pickTab = (t: Tab) => {
+    setTab(t);
+    window.history.replaceState(null, "", `#${t}`);
+  };
   const [depositOpen, setDepositOpen] = useState(false);
   const [amount, setAmount] = useState("250");
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +181,37 @@ export default function AgentPage() {
   const up = agent.returnPct >= 0;
   const onChain = !!vault && !!VAULT_ADDRESS && vault.address.toLowerCase() === VAULT_ADDRESS.toLowerCase();
   const isVaultAgent = agent.id === VAULT_AGENT_ID;
+
+  const versionsNow = resolveVersions(agent.versions ?? [], now);
+  const currentV = activeVersionOf(agent.versions ?? [], agent.version, now);
+  const pending = versionsNow.find((v) => v.status === "pending_investor_notice");
+  const pendingWin = pending ? noticeWindow(pending, now) : null;
+  const verdictCounts = agent.decisions.reduce(
+    (m, d) => ({ ...m, [verdictOf(d)]: m[verdictOf(d)] + 1 }),
+    { took: 0, reduced: 0, skipped: 0 } as Record<Verdict, number>
+  );
+  const shownDecisions = filter === "all" ? agent.decisions : agent.decisions.filter((d) => verdictOf(d) === filter);
+  const visibility = agent.rulesVisibility ?? "public";
+  const rulesVisible = visibility === "public" || !!agent.isMine;
+  const publicRules = rules && {
+    version: currentV,
+    market: agent.market,
+    venue: "Lighter perps · Robinhood Chain",
+    timeframe: agent.timeframe,
+    indicators: rules.indicators,
+    entry: { match: rules.entryLogic, conditions: rules.entry.map(({ left, op, right }) => ({ left, op, right })) },
+    exit: { match: rules.exitLogic, conditions: rules.exit.map(({ left, op, right }) => ({ left, op, right })) },
+    risk: rules.risk,
+    copilot: rules.copilot,
+  };
+  const fingerprint = publicRules ? hashSeed(JSON.stringify({ ...publicRules, version: undefined })).toString(16).padStart(8, "0") : "—";
+
+  const base = agent.market.split("-")[0];
+  const copilotOff = rules?.copilot.mode === "off";
+  const showTwin = !copilotOff && (agent.twin?.length ?? 0) >= 3;
+  const showBench = (agent.benchmark?.length ?? 0) >= 3;
+  const edgePts = showTwin && agent.curve.length >= 3 ? agent.curve[agent.curve.length - 1] - (agent.twin ?? [])[(agent.twin ?? []).length - 1] : null;
+  const benchPts = showBench && agent.curve.length >= 3 ? agent.curve[agent.curve.length - 1] - agent.benchmark[agent.benchmark.length - 1] : null;
 
   const doDeposit = () => {
     const res = actions.deposit(agent.id, deposit);
@@ -363,7 +425,7 @@ export default function AgentPage() {
               ) : (
                 "you"
               )}{" "}
-              · {agent.liveAgeDays ? `${agent.liveAgeDays} day${agent.liveAgeDays === 1 ? "" : "s"} live` : "not live"} · v{agent.version}
+              · {agent.liveAgeDays ? `${agent.liveAgeDays} day${agent.liveAgeDays === 1 ? "" : "s"} live` : "not live"} · v{currentV}
             </span>
             <div className="row gap-6 wrap">
               {agent.status === "live" && vault && <span className="pill pill-green">● Vault open</span>}
@@ -374,6 +436,11 @@ export default function AgentPage() {
               </span>
               <span className="tagbox">{agent.market}</span>
               <span className="tagbox">{agent.timeframe}</span>
+              {pending && pendingWin && (
+                <a href="#versions" className="pill pill-amber" onClick={() => pickTab("versions")} data-testid="pending-pill">
+                  v{pending.version} pending · {mounted ? fmtRemaining(pendingWin.remainingMs) : "48h notice"}
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -403,19 +470,44 @@ export default function AgentPage() {
                   </span>
                   <span className="mono-note">net of fees and costs · indexed to 100 at the start of the record</span>
                 </div>
-                <div className="row gap-12 wrap tiny">
-                  <span className="row gap-6">
-                    <i className="legend-swatch" style={{ background: "#3B5BDB" }} /> Agent
-                  </span>
-                  {(agent.benchmark?.length ?? 0) > 0 && (
+                <div className="stack gap-8" style={{ alignItems: "flex-end" }}>
+                  <div className="row gap-14 wrap tiny" data-testid="chart-legend">
                     <span className="row gap-6">
-                      <i className="legend-swatch legend-dash" style={{ borderColor: "#9AA3B5" }} /> Buy &amp; hold
+                      <i className="legend-swatch legend-main" /> Agent
                     </span>
-                  )}
-                  {(agent.twin?.length ?? 0) > 0 && (
-                    <span className="row gap-6">
-                      <i className="legend-swatch legend-dash" style={{ borderColor: "#6B7280" }} /> Rules-only twin
-                    </span>
+                    {showBench && (
+                      <span className="row gap-6">
+                        <i className="legend-swatch legend-thin" /> {base} buy &amp; hold
+                      </span>
+                    )}
+                    {showTwin && (
+                      <span className="row gap-6">
+                        <i className="legend-swatch legend-dash" style={{ borderColor: "#5F6B7F" }} /> Rules-only twin
+                      </span>
+                    )}
+                  </div>
+                  {(edgePts !== null || benchPts !== null || copilotOff) && (
+                    <div className="row gap-14 wrap tiny mono" style={{ justifyContent: "flex-end" }}>
+                      {edgePts !== null && (
+                        <span title="Agent minus the same rules run without Copilot, in percentage points of return" data-testid="copilot-edge">
+                          Copilot vs twin{" "}
+                          <strong style={{ color: edgePts >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                            {edgePts >= 0 ? "+" : "−"}
+                            {Math.abs(edgePts).toFixed(1)} pts
+                          </strong>
+                        </span>
+                      )}
+                      {benchPts !== null && (
+                        <span title={`Agent minus holding ${base} over the same period`}>
+                          vs {base}{" "}
+                          <strong style={{ color: benchPts >= 0 ? "var(--positive)" : "var(--negative)" }}>
+                            {benchPts >= 0 ? "+" : "−"}
+                            {Math.abs(benchPts).toFixed(1)} pts
+                          </strong>
+                        </span>
+                      )}
+                      {copilotOff && <span>Copilot off · no twin to compare</span>}
+                    </div>
                   )}
                 </div>
               </div>
@@ -441,9 +533,9 @@ export default function AgentPage() {
                   height={260}
                   baseline={100}
                   series={[
-                    { key: "eq", label: "Agent equity", color: "#3B5BDB", data: agent.curve, area: true, width: 2 },
-                    { key: "bm", label: "Buy & hold benchmark", color: "#9AA3B5", data: agent.benchmark, dash: "4 4", width: 1.4 },
-                    { key: "tw", label: "Rules-only twin", color: "#6B7280", data: agent.twin ?? [], dash: "2 3", width: 1.4 },
+                    { key: "eq", label: "Agent", color: "#3B5BDB", data: agent.curve, area: true, width: 2.4 },
+                    ...(showBench ? [{ key: "bm", label: `${base} buy & hold`, color: "#A3ABBD", data: agent.benchmark, width: 1.1 }] : []),
+                    ...(showTwin ? [{ key: "tw", label: "Rules-only twin", color: "#5F6B7F", data: agent.twin ?? [], dash: "6 4", width: 1.5 }] : []),
                   ]}
                   yFormat={(n) => n.toFixed(1)}
                   showLegend={false}
@@ -542,92 +634,347 @@ export default function AgentPage() {
             </section>
           </div>
 
-          {/* 3 · full record */}
-          <section className="rcard">
+          {/* 3 · record panel: activity / published rules / versions */}
+          <section className="rcard" id="record" data-testid="record-panel">
             <div className="rcard-head" style={{ paddingBottom: 0 }}>
               <h2 className="rcard-title">The full record</h2>
-              <button
-                className="btn-out"
-                onClick={() => download(`${agent.id}-decisions.csv`, csvOf(agent))}
-                disabled={agent.decisions.length === 0}
-              >
-                ↓ CSV
-              </button>
+              {tab === "activity" && (
+                <button
+                  className="btn-out"
+                  onClick={() => download(`${agent.id}-decisions.csv`, csvOf(agent))}
+                  disabled={agent.decisions.length === 0}
+                >
+                  ↓ CSV
+                </button>
+              )}
             </div>
-            <div className="utabs" style={{ padding: "0 14px", marginTop: 6 }}>
-              <button className="utab" data-active={recordTab === "decisions"} onClick={() => setRecordTab("decisions")}>
-                Decisions · {agent.decisions.length}
-              </button>
-              <button className="utab" data-active={recordTab === "changes"} onClick={() => setRecordTab("changes")}>
-                Changes · {agent.versions.length}
-              </button>
+            <div className="utabs dtabs" role="tablist" style={{ padding: "0 14px", marginTop: 6 }}>
+              {(
+                [
+                  ["activity", "Activity · Decision log", agent.decisions.length],
+                  ["rules", "Published rules", rulesVisible ? "public" : "summary"],
+                  ["versions", "Versions", versionsNow.length],
+                ] as const
+              ).map(([id, label, count]) => (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={tab === id}
+                  className="utab"
+                  data-testid={`tab-${id}`}
+                  data-active={tab === id}
+                  onClick={() => pickTab(id)}
+                >
+                  {label}
+                  <span className="utab-count">{count}</span>
+                  {id === "versions" && pending && <span className="tab-dot" aria-label="pending change" />}
+                </button>
+              ))}
             </div>
-            {recordTab === "decisions" ? (
-              <div key="decisions" className="fx-in" style={{ overflowX: "auto" }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>When</th>
-                      <th>Market</th>
-                      <th>Proposed</th>
-                      <th>Copilot</th>
-                      <th>Risk</th>
-                      <th>Order / outcome</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {agent.decisions.map((d) => (
-                      <tr key={d.id}>
-                        <td className="tiny mono nowrap">{mounted ? dateTime(d.ts) : "…"}</td>
-                        <td className="tiny mono nowrap">{d.market}</td>
-                        <td className="small" style={{ minWidth: 160 }}>
-                          <span className="strong" style={{ color: "var(--ink)" }}>
-                            {d.proposed}
-                          </span>
-                          <div className="tiny">{d.inputs}</div>
-                        </td>
-                        <td>
-                          <span className={d.aiDecision === "reject" ? "pill pill-red" : d.aiDecision === "reduce" ? "pill pill-amber" : "pill pill-accent"}>
-                            {d.aiDecision.replace("_", " ")}
-                          </span>
-                        </td>
-                        <td style={{ minWidth: 120 }}>
-                          <span className={d.riskDecision === "approved" ? "pill pill-green" : "pill pill-red"}>{d.riskDecision}</span>
-                          {d.riskReason && <div className="tiny" style={{ maxWidth: 200, marginTop: 4 }}>{d.riskReason}</div>}
-                        </td>
-                        <td className="small" style={{ minWidth: 140 }}>
-                          {d.order ?? "—"}
-                          {d.outcome && <div className="tiny">{d.outcome}</div>}
-                        </td>
-                      </tr>
+
+            {tab === "activity" && (
+              <div key="activity" className="fx-in" data-testid="panel-activity">
+                <div className="row between wrap gap-10" style={{ padding: "12px 22px 0" }}>
+                  <div className="seg" role="group" aria-label="Filter decisions">
+                    {(["all", "took", "reduced", "skipped"] as const).map((f) => (
+                      <button key={f} data-active={filter === f} onClick={() => setFilter(f)}>
+                        {f === "all" ? "All" : f[0].toUpperCase() + f.slice(1)} · {f === "all" ? agent.decisions.length : verdictCounts[f]}
+                      </button>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                  <span className="tiny">Each row is one decision: what the rules proposed, why Copilot agreed or not, and the risk check.</span>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="table decision-table">
+                    <thead>
+                      <tr>
+                        <th>When</th>
+                        <th>Proposed · inputs</th>
+                        <th>Copilot · why</th>
+                        <th>Risk check</th>
+                        <th>Order / outcome</th>
+                        <th>Ver.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {shownDecisions.map((d) => (
+                        <tr key={d.id}>
+                          <td className="tiny mono nowrap">
+                            {mounted ? dateTime(d.ts) : "…"}
+                            <div className="tiny">{d.market}</div>
+                          </td>
+                          <td className="small" style={{ minWidth: 170 }}>
+                            <div className="row gap-6" style={{ flexWrap: "nowrap" }}>
+                              <span className={VERDICT_PILL[verdictOf(d)]}>{verdictOf(d)}</span>
+                              <span className="strong" style={{ color: "var(--ink)" }}>
+                                {d.proposed}
+                              </span>
+                            </div>
+                            <div className="tiny" style={{ marginTop: 4 }}>{d.inputs}</div>
+                          </td>
+                          <td style={{ minWidth: 220 }}>
+                            <span className={d.aiDecision === "reject" ? "pill pill-red" : d.aiDecision === "reduce" ? "pill pill-amber" : d.aiDecision === "rules_only" ? "pill" : "pill pill-accent"}>
+                              {d.aiDecision.replace("_", " ")}
+                            </span>
+                            <div className={cx("tiny", !d.aiReason && "muted-2")} style={{ maxWidth: 260, marginTop: 4 }}>
+                              {copilotWhy(d)}
+                            </div>
+                          </td>
+                          <td style={{ minWidth: 150 }}>
+                            <span className={d.riskDecision === "approved" ? "pill pill-green" : "pill pill-red"}>{d.riskDecision}</span>
+                            <div className="tiny" style={{ maxWidth: 220, marginTop: 4 }}>
+                              {d.riskReason ?? (d.riskDecision === "approved" ? "Within every published limit." : "")}
+                            </div>
+                          </td>
+                          <td className="small" style={{ minWidth: 140 }}>
+                            {d.order ?? "—"}
+                            {d.outcome && <div className="tiny">{d.outcome}</div>}
+                          </td>
+                          <td className="tiny mono">{d.strategyVersion ? `v${d.strategyVersion}` : "—"}</td>
+                        </tr>
+                      ))}
+                      {shownDecisions.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="small" style={{ textAlign: "center", padding: 24 }}>
+                            No {filter === "all" ? "" : `${filter} `}decisions on record.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            ) : (
-              <div key="changes" className="rcard-pad stack gap-10 fx-in">
-                {[...agent.versions].reverse().map((v) => (
-                  <div key={v.version} className="kv" style={{ alignItems: "flex-start" }}>
-                    <div className="stack" style={{ gap: 3 }}>
-                      <span className="small strong" style={{ color: "var(--ink)" }}>
-                        v{v.version} · {v.summary}
-                      </span>
-                      <span className="tiny">{v.notice}</span>
-                    </div>
-                    <span className="kv-v" style={{ whiteSpace: "nowrap" }}>
-                      {mounted ? dateOnly(v.ts) : "…"}
+            )}
+
+            {tab === "rules" && rules && (
+              <div key="rules" className="rcard-pad stack gap-16 fx-in" data-testid="panel-rules">
+                <div className="row between wrap gap-10">
+                  <div className="row gap-8 wrap">
+                    <span className={visibility === "public" ? "pill pill-green" : "pill pill-amber"}>
+                      {visibility === "public" ? "Public rules" : "Summary only"}
+                    </span>
+                    <span className="tagbox tagbox-accent">typed · validated</span>
+                    <span className="tiny mono">published with v{currentV}</span>
+                    <span className="tiny mono" title="Changes whenever any rule, limit or Copilot setting changes. A change check, not a cryptographic commitment.">
+                      fingerprint {fingerprint}
                     </span>
                   </div>
+                  {rulesVisible && (
+                    <div className="seg" role="group" aria-label="Rules view">
+                      <button data-active={rulesView === "rules"} onClick={() => setRulesView("rules")}>
+                        Rules
+                      </button>
+                      <button data-active={rulesView === "code"} onClick={() => setRulesView("code")}>
+                        Code
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {agent.isMine && (
+                  <div className="notice notice-neutral" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <span>
+                      <strong>You are the creator.</strong> You always see the full rules. Investors see{" "}
+                      {visibility === "public" ? "everything below" : "limits, Copilot settings and the fingerprint — not the thresholds"}.
+                    </span>
+                    <div className="seg">
+                      <button
+                        data-active={visibility === "public"}
+                        onClick={() => actions.updateAgent(agent.id, { rulesVisibility: "public" })}
+                      >
+                        Public
+                      </button>
+                      <button
+                        data-active={visibility === "summary"}
+                        onClick={() => actions.updateAgent(agent.id, { rulesVisibility: "summary" })}
+                      >
+                        Summary only
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!rulesVisible && (
+                  <div className="notice notice-warn">
+                    <div>
+                      <strong>The creator keeps exact entry and exit thresholds private.</strong> Published here: market, timeframe,
+                      indicators used, Copilot configuration and every risk limit. The fingerprint changes whenever the private rules
+                      change, and every change still goes through versions and the 48h investor notice.
+                    </div>
+                  </div>
+                )}
+
+                {rulesVisible && rulesView === "code" ? (
+                  <pre className="code" data-testid="rules-code">{JSON.stringify(publicRules, null, 2)}</pre>
+                ) : (
+                  <>
+                    {rulesVisible && (
+                      <div className="grid-2" style={{ gap: 16 }}>
+                        <div className="stack gap-6">
+                          <span className="stat-label">Enter when · match {rules.entryLogic}</span>
+                          {rules.entry.map((c) => (
+                            <code key={c.id} className="rule-line">
+                              {c.left} {opLabel[c.op]} {c.right}
+                            </code>
+                          ))}
+                        </div>
+                        <div className="stack gap-6">
+                          <span className="stat-label">Exit when · match {rules.exitLogic}</span>
+                          {rules.exit.map((c) => (
+                            <code key={c.id} className="rule-line">
+                              {c.left} {opLabel[c.op]} {c.right}
+                            </code>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="stack gap-6">
+                      <span className="stat-label">Indicators</span>
+                      <div className="row gap-6 wrap">
+                        {rules.indicators.length === 0 && <span className="tiny">None — price and funding inputs only.</span>}
+                        {(rulesVisible
+                          ? rules.indicators.map((i) => ({ key: i.id, label: `${i.kind.toUpperCase()}(${i.period})` }))
+                          : Array.from(new Set(rules.indicators.map((i) => i.kind))).map((k) => ({ key: k, label: k.toUpperCase() }))
+                        ).map((i) => (
+                          <span key={i.key} className="tagbox">
+                            {i.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="detail-two" style={{ gap: 16 }}>
+                      <div>
+                        <span className="stat-label">Market &amp; Copilot</span>
+                        <KV k="Market" v={`${agent.market} · Lighter perps · Robinhood Chain`} />
+                        <KV k="Timeframe" v={agent.timeframe} />
+                        <KV k="Copilot" v={COPILOT_LABEL[rules.copilot.mode]} />
+                        <KV k="Extra trades by Copilot" v={rules.copilot.allowExtraTrades ? "allowed" : "not allowed"} />
+                        <KV k="If Copilot is unavailable" v={rules.copilot.fallbackToRules ? "fall back to rules" : "skip the trade"} />
+                        <KV k="Rules-only twin" v={rules.copilot.rulesOnlyTwin ? "recorded" : "off"} />
+                      </div>
+                      <div>
+                        <span className="stat-label">Risk limits</span>
+                        <KV k="Leverage" v={`${rules.risk.leverage}x`} />
+                        <KV k="Max position" v={`${rules.risk.maxPositionPct}%`} />
+                        <KV k="Per-trade stop" v={`${rules.risk.stopLossPct}%`} />
+                        <KV k="Take profit" v={`${rules.risk.takeProfitPct}%`} />
+                        <KV k="Daily loss pause" v={`${rules.risk.dailyLossPausePct}%`} />
+                        <KV k="Drawdown stop" v={`${rules.risk.maxDrawdownPct}%`} />
+                      </div>
+                    </div>
+                  </>
+                )}
+                <span className="mono-note">
+                  Position and leverage caps are enforced by the risk service and signer permissions; loss pauses are server-side
+                  triggers, not on-chain guarantees. A trigger limits new risk — it cannot promise a maximum loss during gaps.
+                </span>
+                {issues.map((i, idx) => (
+                  <span key={idx} className="tiny" style={{ color: i.level === "error" ? "var(--negative)" : "var(--warning)" }}>
+                    {i.level === "error" ? "Error" : "Warning"} · {i.message}
+                  </span>
                 ))}
               </div>
             )}
+
+            {tab === "versions" && (
+              <div key="versions" className="rcard-pad stack gap-16 fx-in" data-testid="panel-versions">
+                <div className="policy-strip">
+                  {[
+                    ["01", "Changes are versioned", "A rules change becomes a new version. Old results are kept, never recalculated."],
+                    ["02", "Investors get 48h notice", "With investors in the vault, a new version waits 48h before it trades. Investors can withdraw meanwhile."],
+                    ["03", "Open positions are stated", "Every change says what happens to positions opened under the previous version."],
+                  ].map(([n, t, b]) => (
+                    <div key={n} className="step-row">
+                      <span className="mono-num" style={{ color: "var(--primary)", fontSize: 12 }}>
+                        {n}
+                      </span>
+                      <div className="stack" style={{ gap: 3 }}>
+                        <span className="small strong" style={{ color: "var(--ink)" }}>
+                          {t}
+                        </span>
+                        <span className="tiny">{b}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {pending && pendingWin && (
+                  <div className="version-pending" data-testid="pending-version">
+                    <div className="row between wrap gap-8">
+                      <div className="row gap-8 wrap">
+                        <span className="small strong" style={{ color: "var(--ink)" }}>
+                          v{pending.version}
+                        </span>
+                        <span className="pill pill-amber">pending investor notice</span>
+                        <span className="small">{pending.summary}</span>
+                      </div>
+                      <span className="mono-num" style={{ fontSize: 13, color: "#8a5a00" }} data-testid="notice-countdown">
+                        {mounted ? fmtRemaining(pendingWin.remainingMs) : "…"}
+                      </span>
+                    </div>
+                    <div className="notice-bar" aria-label={`${Math.round(pendingWin.pct)}% of the 48h notice elapsed`}>
+                      <span style={{ width: `${pendingWin.pct}%` }} />
+                    </div>
+                    <div className="row between wrap gap-8 tiny mono">
+                      <span>Investors notified {mounted ? dateTime(new Date(pendingWin.start).toISOString()) : "…"}</span>
+                      <span>Takes effect {mounted ? dateTime(new Date(pendingWin.end).toISOString()) : "…"}</span>
+                    </div>
+                    {pending.changes && pending.changes.length > 0 && (
+                      <div className="stack gap-4">
+                        <span className="stat-label">What changes vs v{currentV}</span>
+                        {pending.changes.map((c) => (
+                          <code key={c} className="rule-line">
+                            {c}
+                          </code>
+                        ))}
+                      </div>
+                    )}
+                    {pending.positionHandling && (
+                      <div className="stack gap-4">
+                        <span className="stat-label">Open positions</span>
+                        <span className="small">{pending.positionHandling}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="timeline">
+                  {[...versionsNow]
+                    .filter((v) => v.status !== "pending_investor_notice")
+                    .reverse()
+                    .map((v) => (
+                      <div key={v.version} className="timeline-item">
+                        <span className="timeline-dot" />
+                        <div className="stack" style={{ gap: 3 }}>
+                          <div className="row gap-8 wrap">
+                            <span className="small strong" style={{ color: "var(--ink)" }}>
+                              v{v.version}
+                            </span>
+                            <span className={v.status === "active" ? "pill pill-green" : "pill"}>{v.status.replace(/_/g, " ")}</span>
+                            <span className="tiny mono">
+                              {mounted ? `active from ${dateOnly(v.effectiveAt ?? v.ts)}` : "…"}
+                              {mounted && v.noticeAt ? ` · notified ${dateOnly(v.noticeAt)}` : ""}
+                            </span>
+                          </div>
+                          <span className="small">{v.summary}</span>
+                          <span className="tiny">{v.notice}</span>
+                          {v.positionHandling && <span className="tiny">Open positions: {v.positionHandling}</span>}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {tab === "activity" && (
             <div className="record-foot">
               <span>
-                Every row: market inputs, proposed action, Copilot decision, independent risk decision, order and outcome. AI-credit
-                exhaustion never disables stops, exits or the emergency close path.
+                Every decision row records market inputs, the proposed action, Copilot&apos;s verdict and reason, the independent risk
+                decision, the order and its outcome. AI-credit exhaustion never disables stops, exits or the emergency close path.
               </span>
               <span>{onChain ? "Vault reads are live below." : "Check on-chain: no deployed vault for this record yet."}</span>
             </div>
+            )}
           </section>
 
           </>
@@ -643,111 +990,6 @@ export default function AgentPage() {
               {agent.strategySummary}
             </p>
           </section>
-
-          {!isVaultAgent && (
-          <>
-          {/* 5 · how it trades | risk limits */}
-          {rules && (
-            <div className="detail-two">
-              <section className="rcard rcard-pad stack gap-12">
-                <div className="row between gap-8">
-                  <h2 className="rcard-title">How it trades</h2>
-                  <span className="tagbox tagbox-accent">typed · validated</span>
-                </div>
-                <div className="stack gap-6">
-                  <span className="stat-label">Entry · match {rules.entryLogic}</span>
-                  {rules.entry.map((c) => (
-                    <code key={c.id} className="rule-line">
-                      {c.left} {opLabel[c.op]} {c.right}
-                    </code>
-                  ))}
-                </div>
-                <div className="stack gap-6">
-                  <span className="stat-label">Exit · match {rules.exitLogic}</span>
-                  {rules.exit.map((c) => (
-                    <code key={c.id} className="rule-line">
-                      {c.left} {opLabel[c.op]} {c.right}
-                    </code>
-                  ))}
-                </div>
-                <div>
-                  <KV k="Market" v={agent.market} />
-                  <KV k="Timeframe" v={agent.timeframe} />
-                  <KV k="Copilot" v={rules.copilot.mode} />
-                  <KV k="Rules-only twin" v={rules.copilot.rulesOnlyTwin ? "recorded" : "off"} />
-                </div>
-              </section>
-              <section className="rcard rcard-pad stack gap-12">
-                <h2 className="rcard-title">Risk limits</h2>
-                <div>
-                  <KV k="Leverage" v={`${rules.risk.leverage}x`} />
-                  <KV k="Max position" v={`${rules.risk.maxPositionPct}%`} />
-                  <KV k="Per-trade stop" v={`${rules.risk.stopLossPct}%`} />
-                  <KV k="Take profit" v={`${rules.risk.takeProfitPct}%`} />
-                  <KV k="Daily loss pause" v={`${rules.risk.dailyLossPausePct}%`} />
-                  <KV k="Drawdown stop" v={`${rules.risk.maxDrawdownPct}%`} />
-                </div>
-                <span className="mono-note">
-                  Position and leverage caps are enforced by the risk service and signer permissions; loss pauses are server-side
-                  triggers, not on-chain guarantees. A trigger limits new risk — it cannot promise a maximum loss during gaps.
-                </span>
-                {issues.map((i, idx) => (
-                  <span key={idx} className="tiny" style={{ color: i.level === "error" ? "var(--negative)" : "var(--warning)" }}>
-                    {i.level === "error" ? "Error" : "Warning"} · {i.message}
-                  </span>
-                ))}
-              </section>
-            </div>
-          )}
-
-          {/* 6 · how it stays up to date | versions */}
-          <div className="detail-two">
-            <section className="rcard rcard-pad stack gap-12">
-              <h2 className="rcard-title">How it stays up to date</h2>
-              {[
-                ["01", "Every idea is checked twice", "The Copilot reviews each proposal; the risk service then approves or refuses it on its own authority."],
-                ["02", "Changes are versioned", "A rules change becomes a new version. Old results are kept, never recalculated."],
-                ["03", "Investors get notice", "With investors in the vault, a change waits out a 48h notice and states what happens to open positions."],
-              ].map(([n, t, b]) => (
-                <div key={n} className="step-row">
-                  <span className="mono-num" style={{ color: "var(--primary)", fontSize: 12 }}>
-                    {n}
-                  </span>
-                  <div className="stack" style={{ gap: 3 }}>
-                    <span className="small strong" style={{ color: "var(--ink)" }}>
-                      {t}
-                    </span>
-                    <span className="tiny">{b}</span>
-                  </div>
-                </div>
-              ))}
-            </section>
-            <section className="rcard rcard-pad stack gap-12">
-              <h2 className="rcard-title">Versions</h2>
-              <div className="timeline">
-                {[...agent.versions].reverse().map((v) => (
-                  <div key={v.version} className="timeline-item">
-                    <span className="timeline-dot" />
-                    <div className="stack" style={{ gap: 2 }}>
-                      <div className="row gap-8 wrap">
-                        <span className="small strong" style={{ color: "var(--ink)" }}>
-                          v{v.version}
-                        </span>
-                        <span className={v.status === "active" ? "pill pill-green" : v.status === "pending_investor_notice" ? "pill pill-amber" : "pill"}>
-                          {v.status.replace(/_/g, " ")}
-                        </span>
-                        <span className="tiny mono">{mounted ? dateOnly(v.ts) : "…"}</span>
-                      </div>
-                      <span className="tiny">{v.summary}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          </>
-          )}
 
           {/* 7 · where your money goes */}
           <section className="rcard rcard-pad stack gap-16">
