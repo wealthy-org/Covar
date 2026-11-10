@@ -32,11 +32,29 @@ import { actions } from "@/lib/store";
 import { useAuth } from "@/lib/session";
 
 const STEP_LABEL: Record<string, string> = {
-  ClosingPositions: "Closing positions",
-  Settling: "Settling",
-  Claimable: "Ready to claim",
+  ClosingPositions: "Requested · Closing positions",
+  Settling: "Positions closed · Settling",
+  Claimable: "Settled · Ready to claim",
   Claimed: "Claimed",
 };
+
+/** The four on-chain stages of a withdrawal, named after the events the vault emits. */
+const WD_STEPS = [
+  { key: "requested", label: "Withdrawal requested", event: "WithdrawalRequested" },
+  { key: "closed", label: "Positions closed", event: "PositionsClosed" },
+  { key: "settled", label: "Settled", event: "WithdrawalSettled" },
+  { key: "claimed", label: "Claimed to wallet", event: "WithdrawalClaimed" },
+] as const;
+/** index of the step currently in progress (steps before it are done) */
+const WD_CURRENT: Record<string, number> = { ClosingPositions: 1, Settling: 2, Claimable: 3, Claimed: 4 };
+
+interface Receipt {
+  label: string;
+  hash: string;
+  block: number;
+  shares: [bigint, bigint];
+  usdg: [bigint, bigint];
+}
 
 export function InvestPanel({ agentId, compact = false }: { agentId?: string; compact?: boolean }) {
   const chain = EXPECTED_CHAIN_ID;
@@ -51,6 +69,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
   const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
   const [amount, setAmount] = useState("");
   const [shares, setShares] = useState("");
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
   const auth = useAuth();
 
   /** true = everything read; false = something failed (caller retries sooner) */
@@ -202,10 +221,12 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
   }, [shares, vault, acct, dec]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------------------------------------------------------- tx runner */
-  async function run(label: string, to: string, data: string, after?: (hash: string) => void) {
-    if (!account) return;
+  /** Sends one transaction; resolves true once it is confirmed with status 1. */
+  async function run(label: string, to: string, data: string, after?: (hash: string) => void, opts: { receipt?: boolean } = {}): Promise<boolean> {
+    if (!account) return false;
     setBusy(label);
     setMsg({ tone: "info", text: `${label}: confirm in your wallet…` });
+    const before = acct;
     try {
       const hash = await sendTx({ from: account, to, data, chain });
       setMsg({ tone: "info", text: `${label}: sent, waiting for confirmation…`, hash });
@@ -213,13 +234,43 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
       if (!r.ok) throw new Error("The transaction failed on the network. Nothing moved except a small network fee.");
       setMsg({ tone: "ok", text: `${label}: confirmed in block ${r.blockNumber}.`, hash });
       after?.(hash);
+      if (opts.receipt && before && vault && VAULT_ADDRESS) {
+        // read the wallet again so the receipt shows real before → after balances
+        try {
+          const now = await readAccount(VAULT_ADDRESS, vault.asset, account, chain);
+          setReceipt({ label, hash, block: Number(r.blockNumber), shares: [before.shares, now.shares], usdg: [before.usdgBalance, now.usdgBalance] });
+        } catch {
+          /* the balances refresh below anyway */
+        }
+      }
       await refresh();
       setTimeout(() => void syncActivity(), 6_000); // once the indexer has the block
+      return true;
     } catch (e) {
       setMsg({ tone: "err", text: explainError(e) });
+      return false;
     } finally {
       setBusy(null);
     }
+  }
+
+  async function depositFlow() {
+    if (!dep || !dep.ok || dep.error || !vault || !VAULT_ADDRESS || !acct) return;
+    const { gross, fee } = dep;
+    if (acct.allowance < gross) {
+      const ok = await run(`Step 1 of 2 · Approve ${fmt(gross)} ${sym}`, vault.asset, calldata(SEL.approve, encAddress(VAULT_ADDRESS), encUint(gross)));
+      if (!ok) return;
+    }
+    await run(
+      `Deposit ${fmt(gross)} ${sym}`,
+      VAULT_ADDRESS,
+      calldata(SEL.deposit, encUint(gross)),
+      (hash) => {
+        actions.recordChainTx({ kind: "deposit", label: `Deposited ${fmt(gross)} ${sym}`, amountUsd: Number(formatUnits(gross, dec, 6).replace(/,/g, "")), txHash: hash, agentId, note: `fee ${fmt(fee)}` });
+        setAmount("");
+      },
+      { receipt: true },
+    );
   }
 
   const connect = async () => {
@@ -308,18 +359,51 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
           </div>
 
           {req && req.state !== "None" && req.state !== "Claimed" && (
-            <div className="soft stack gap-8" style={{ padding: 12, borderRadius: 6 }} data-testid="invest-request">
+            <div className="soft stack gap-10" style={{ padding: 12, borderRadius: 6 }} data-testid="invest-request">
               <div className="row between gap-8">
                 <span className="small strong">Withdrawal · {fmt(req.shares, 4)} shares</span>
-                <span className="pill pill-accent">{STEP_LABEL[req.state] ?? req.state}</span>
+                <span className={req.state === "Claimable" ? "pill pill-green" : "pill pill-accent"} data-testid="request-state">
+                  {STEP_LABEL[req.state] ?? req.state}
+                </span>
               </div>
+              <ol className="wd-steps" aria-label="Withdrawal progress">
+                {WD_STEPS.map((st, i) => {
+                  const cur = WD_CURRENT[req.state] ?? 0;
+                  const status = i < cur ? "done" : i === cur ? "current" : "todo";
+                  const when =
+                    st.key === "requested" && req.requestedAt
+                      ? new Date(req.requestedAt * 1000).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                      : st.key === "settled" && req.settledAt
+                        ? `${fmt(req.settledAssets)} ${sym}`
+                        : null;
+                  return (
+                    <li key={st.key} data-status={status}>
+                      <span className="wd-dot">{status === "done" ? "✓" : i + 1}</span>
+                      <span className="stack" style={{ gap: 1 }}>
+                        <span className="small">{st.label}</span>
+                        <span className="tiny mono">
+                          {st.event}
+                          {when ? ` · ${when}` : ""}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
               {req.state === "Claimable" ? (
                 <button
                   className="btn-ink"
+                  style={{ height: 40 }}
                   disabled={!!busy}
+                  data-testid="claim-btn"
                   onClick={() =>
-                    void run("Claim", VAULT_ADDRESS!, SEL.claim, (hash) =>
-                      actions.recordChainTx({ kind: "withdrawal_claim", label: `Claimed ${fmt(req.settledAssets)} ${sym}`, amountUsd: Number(formatUnits(req.settledAssets, dec, 6).replace(/,/g, "")), txHash: hash, agentId }),
+                    void run(
+                      "Claim",
+                      VAULT_ADDRESS!,
+                      SEL.claim,
+                      (hash) =>
+                        actions.recordChainTx({ kind: "withdrawal_claim", label: `Claimed ${fmt(req.settledAssets)} ${sym}`, amountUsd: Number(formatUnits(req.settledAssets, dec, 6).replace(/,/g, "")), txHash: hash, agentId }),
+                      { receipt: true },
                     )
                   }
                 >
@@ -327,8 +411,9 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
                 </button>
               ) : (
                 <span className="tiny">
-                  The operator closes your share of open positions, then settles at a fresh NAV. Claiming always pays this wallet — nobody can
-                  redirect it.
+                  Not instant on purpose: the operator first closes your share of open trading positions so other investors aren&apos;t
+                  affected, then settles at a fresh NAV. This usually takes a few operator cycles. Claiming always pays this wallet —
+                  nobody can redirect it.
                 </span>
               )}
             </div>
@@ -346,41 +431,49 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
           {tab === "deposit" ? (
             <div className="stack gap-8">
               <input className="input num" inputMode="decimal" placeholder={`Amount in ${sym}`} value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Deposit amount" />
-              {dep && dep.ok && (
-                <span className="tiny">
-                  Fee {fmt(dep.fee)} · invested {fmt(dep.net)} · ≈ {fmt(dep.sharesOut, 4)} shares
-                </span>
+              {dep && dep.ok && vault && (
+                <div className="fee-break" data-testid="fee-breakdown">
+                  <div className="kv">
+                    <span className="kv-k">You deposit</span>
+                    <span className="kv-v">{fmt(dep.gross)} {sym}</span>
+                  </div>
+                  <div className="kv">
+                    <span className="kv-k">Fee · {(vault.depositFeeBps / 100).toFixed(vault.depositFeeBps % 100 ? 2 : 0)}%</span>
+                    <span className="kv-v">−{fmt((dep.gross * BigInt(vault.depositFeeBps)) / 10_000n, 4)}</span>
+                  </div>
+                  <div className="kv">
+                    <span className="kv-k">Fee · flat</span>
+                    <span className="kv-v">−{fmt(vault.raw.depositFeeFlat)}</span>
+                  </div>
+                  <div className="kv fee-total">
+                    <span className="kv-k">Invested in the vault</span>
+                    <span className="kv-v">{fmt(dep.net)} {sym}</span>
+                  </div>
+                  <div className="kv">
+                    <span className="kv-k">Shares at NAV {vault.navPerShare.toFixed(4)}</span>
+                    <span className="kv-v">≈ {fmt(dep.sharesOut, 4)}</span>
+                  </div>
+                  <span className="tiny">
+                    Fee {fmt(dep.fee)} · invested {fmt(dep.net)}. The fee goes to the Covar treasury; nothing else is taken on deposit.
+                  </span>
+                </div>
               )}
               {dep?.error && (
                 <span className="tiny" role="alert" style={{ color: "var(--negative)" }}>
                   {dep.error}
                 </span>
               )}
-              {needApprove ? (
-                <button
-                  className="btn-ink"
-                  style={{ height: 40 }}
-                  disabled={!!busy || !dep || !!dep.error}
-                  onClick={() => dep && dep.ok && void run(`Approve ${fmt(dep.gross)} ${sym}`, vault!.asset, calldata(SEL.approve, encAddress(VAULT_ADDRESS!), encUint(dep.gross)))}
-                >
-                  Step 1 of 2 · Approve {dep && dep.ok ? fmt(dep.gross) : ""} {sym}
-                </button>
-              ) : (
-                <button
-                  className="btn-ink"
-                  style={{ height: 40 }}
-                  disabled={!!busy || !dep || !!dep.error}
-                  onClick={() =>
-                    dep &&
-                    dep.ok &&
-                    void run(`Deposit ${fmt(dep.gross)} ${sym}`, VAULT_ADDRESS!, calldata(SEL.deposit, encUint(dep.gross)), (hash) => {
-                      actions.recordChainTx({ kind: "deposit", label: `Deposited ${fmt(dep.gross)} ${sym}`, amountUsd: Number(formatUnits(dep.gross, dec, 6).replace(/,/g, "")), txHash: hash, agentId, note: `fee ${fmt(dep.fee)}` });
-                      setAmount("");
-                    })
-                  }
-                >
-                  {acct && dep && dep.ok && acct.allowance >= dep.gross && dep.gross > 0n ? "Step 2 of 2 · Deposit" : "Deposit"}
-                </button>
+              <button
+                className="btn-ink"
+                style={{ height: 40 }}
+                data-testid="deposit-btn"
+                disabled={!!busy || !dep || !!dep.error}
+                onClick={() => void depositFlow()}
+              >
+                {needApprove ? "Approve & deposit" : "Deposit"}
+              </button>
+              {needApprove && !busy && (
+                <span className="tiny">Two wallet confirmations: first allow the vault to take exactly this amount of {sym}, then the deposit itself.</span>
               )}
             </div>
           ) : (
@@ -411,7 +504,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
                   void run(`Request withdrawal of ${fmt(wd.s, 4)} shares`, VAULT_ADDRESS!, calldata(SEL.requestWithdrawal, encUint(wd.s)), (hash) => {
                     actions.recordChainTx({ kind: "withdrawal_request", label: `Withdrawal requested · ${fmt(wd.s, 4)} shares`, amountUsd: Number(formatUnits(wd.net, dec, 6).replace(/,/g, "")), txHash: hash, agentId, note: "estimate at request; final at settlement" });
                     setShares("");
-                  })
+                  }, { receipt: true })
                 }
               >
                 Request withdrawal
@@ -423,6 +516,37 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
             <span className="tiny">Sign in with your wallet (top-right wallet menu) to keep this history across devices.</span>
           )}
         </>
+      )}
+
+      {receipt && (
+        <div className="tx-receipt" data-testid="tx-receipt">
+          <div className="row between gap-8">
+            <span className="small strong">✓ {receipt.label} · confirmed</span>
+            <button className="btn-out" style={{ height: 24, padding: "0 8px" }} onClick={() => setReceipt(null)} aria-label="Dismiss receipt">
+              ×
+            </button>
+          </div>
+          <div className="kv">
+            <span className="kv-k">Your shares</span>
+            <span className="kv-v">
+              {fmt(receipt.shares[0], 4)} → {fmt(receipt.shares[1], 4)}{" "}
+              <Delta v={receipt.shares[1] - receipt.shares[0]} f={(x) => fmt(x, 4)} />
+            </span>
+          </div>
+          <div className="kv">
+            <span className="kv-k">Wallet {sym}</span>
+            <span className="kv-v">
+              {fmt(receipt.usdg[0])} → {fmt(receipt.usdg[1])} <Delta v={receipt.usdg[1] - receipt.usdg[0]} f={(x) => fmt(x)} />
+            </span>
+          </div>
+          <div className="kv">
+            <span className="kv-k">Transaction</span>
+            <a className="kv-v link-primary mono" href={`${explorer}/tx/${receipt.hash}`} target="_blank" rel="noreferrer" data-testid="receipt-hash">
+              {receipt.hash.slice(0, 10)}…{receipt.hash.slice(-6)} ↗
+            </a>
+          </div>
+          <span className="tiny">Block {receipt.block} · recorded in your ledger below.</span>
+        </div>
       )}
 
       {msg && (
@@ -448,5 +572,16 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
         </a>
       </span>
     </div>
+  );
+}
+
+function Delta({ v, f }: { v: bigint; f: (x: bigint) => string }) {
+  if (v === 0n) return <span className="tiny muted">(no change)</span>;
+  const up = v > 0n;
+  return (
+    <span className="tiny" style={{ color: up ? "var(--positive)" : "var(--negative)" }}>
+      ({up ? "+" : "−"}
+      {f(up ? v : -v)})
+    </span>
   );
 }

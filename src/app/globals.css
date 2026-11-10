@@ -1184,3 +1184,27 @@ html.rv [data-rv="wait"] .fx-area { opacity: 0; }
   background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: var(--shadow-md);
   padding: 8px 10px; min-width: 170px; z-index: 2;
 }
+
+/* ── Invest: fee breakdown, withdrawal steps, receipt ─────────────────────── */
+.fee-break { display: flex; flex-direction: column; padding: 4px 12px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: #fbfcfe; }
+.fee-break .kv { padding: 7px 0; }
+.fee-break .fee-total { border-top: 1px solid var(--border); }
+.fee-break .fee-total .kv-k, .fee-break .fee-total .kv-v { color: var(--ink); font-weight: 560; }
+.wd-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.wd-steps li { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; align-items: start; padding: 6px 0; position: relative; }
+.wd-steps li:not(:last-child)::after { content: ""; position: absolute; left: 11px; top: 28px; bottom: -6px; width: 1px; background: var(--border); }
+.wd-steps li[data-status="done"]:not(:last-child)::after { background: var(--positive); }
+.wd-dot {
+  width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: 10.5px; border: 1px solid var(--border); background: #fff; color: var(--muted);
+}
+.wd-steps li[data-status="done"] .wd-dot { background: var(--positive); border-color: var(--positive); color: #fff; }
+.wd-steps li[data-status="current"] .wd-dot { border-color: var(--primary); color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.14); }
+.wd-steps li[data-status="current"] .small { color: var(--ink); font-weight: 560; }
+.wd-steps li[data-status="todo"] .small { color: var(--muted); }
+.tx-receipt { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid #cfe8da; border-left: 3px solid var(--positive); border-radius: var(--radius); background: #f6fbf8; }
+.tx-receipt .kv { padding: 6px 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .wd-steps li[data-status="current"] .wd-dot { animation: wd-pulse 1.8s ease-in-out infinite; }
+}
+@keyframes wd-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.14); } 50% { box-shadow: 0 0 0 6px rgba(59, 91, 219, 0.06); } }

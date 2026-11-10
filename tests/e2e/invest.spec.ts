@@ -195,10 +195,17 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
 
   await panel.getByLabel("Deposit amount").fill("100");
   await expect(panel).toContainText("Fee 1.1 · invested 98.9");
-  await panel.getByRole("button", { name: /Step 1 of 2 · Approve/ }).click();
-  await expect(page.getByTestId("invest-msg")).toContainText("confirmed", { timeout: 30_000 });
-  await panel.getByRole("button", { name: "Step 2 of 2 · Deposit" }).click();
-  await expect(page.getByTestId("invest-msg")).toContainText("Deposit 100 USDG: confirmed", { timeout: 30_000 });
+  const fees = panel.getByTestId("fee-breakdown");
+  await expect(fees).toContainText("Fee · 1%");
+  await expect(fees).toContainText("Fee · flat");
+  await expect(fees).toContainText("−0.1");
+  if (process.env.E2E_SHOTS) await panel.screenshot({ path: `${process.env.E2E_SHOTS}/invest-0-fees.png` });
+  // one click, two wallet confirmations: approve, then deposit
+  await panel.getByRole("button", { name: "Approve & deposit" }).click();
+  await expect(page.getByTestId("invest-msg")).toContainText("Deposit 100 USDG: confirmed", { timeout: 60_000 });
+  await expect(panel.getByTestId("tx-receipt")).toContainText("0 → 98.9", { timeout: 20_000 });
+  await expect(panel.getByTestId("receipt-hash")).toContainText(/^0x[0-9a-f]{8}…/);
+  if (process.env.E2E_SHOTS) await panel.screenshot({ path: `${process.env.E2E_SHOTS}/invest-1-deposit.png` });
   await expect(panel).toContainText("98.9 ≈ 98.9", { timeout: 20_000 });
   expect(before - (await usdgOf(investor.address))).toBe(100_000_000n);
 
@@ -209,6 +216,8 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
   await panel.getByRole("button", { name: "Request withdrawal" }).click();
   await expect(page.getByTestId("invest-msg")).toContainText("confirmed", { timeout: 30_000 });
   await expect(page.getByTestId("invest-request")).toContainText("Closing positions", { timeout: 20_000 });
+  await expect(page.getByTestId("invest-request")).toContainText("WithdrawalRequested");
+  if (process.env.E2E_SHOTS) await panel.screenshot({ path: `${process.env.E2E_SHOTS}/invest-2-requested.png` });
 
   // the real operator service, live, with wallet B
   const provider = new JsonRpcProvider(RPC, undefined, { cacheTimeout: -1 });
@@ -230,8 +239,12 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
   const panel2 = page.getByTestId("invest-panel");
   const claim = panel2.getByRole("button", { name: /^Claim 97\.81/ });
   await expect(claim).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("invest-request")).toContainText("Settled · Ready to claim");
+  if (process.env.E2E_SHOTS) await panel2.screenshot({ path: `${process.env.E2E_SHOTS}/invest-3-settled.png` });
   await claim.click();
   await expect(page.getByTestId("invest-msg")).toContainText("Claim: confirmed", { timeout: 30_000 });
+  await expect(panel2.getByTestId("tx-receipt")).toContainText("(+97.81", { timeout: 20_000 });
+  if (process.env.E2E_SHOTS) await panel2.screenshot({ path: `${process.env.E2E_SHOTS}/invest-4-claimed.png` });
   expect(before - (await usdgOf(investor.address))).toBe(100_000_000n - 97_811_000n); // only the two fees are gone
 
   // ledger rows carry the real tx hashes and are stored under this wallet's account

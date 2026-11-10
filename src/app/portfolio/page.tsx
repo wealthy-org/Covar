@@ -10,7 +10,7 @@ import { InvestPanel } from "@/components/InvestPanel";
 import { WalletGate } from "@/components/WalletGate";
 import CreditsPanel from "@/components/CreditsPanel";
 import { useCredits } from "@/lib/creditsClient";
-import { EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
+import { CHAINS, EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
 import { formatUnits, readAccount, type RequestState } from "@/lib/vaultTx";
 import { VAULT_AGENT_ID } from "@/lib/vaultAgent";
 import { getWalletProvider } from "@/lib/wallet";
@@ -52,6 +52,12 @@ function useOnChainBalances(wallet: string, enabled: boolean) {
   }, [wallet, enabled]);
   return v;
 }
+
+const REQUEST_STATE_PILL: Partial<Record<RequestState, string>> = {
+  ClosingPositions: "Requested · closing positions",
+  Settling: "Settling",
+  Claimable: "Settled · claim ready",
+};
 
 const REQUEST_TEXT: Partial<Record<RequestState, string>> = {
   ClosingPositions: "the operator is closing your share of open positions",
@@ -243,7 +249,13 @@ function PortfolioInner() {
                     <td className="right num faint">—</td>
                     <td className="right num faint">—</td>
                     <td>
-                      <span className="small">{REQUEST_TEXT[chainBal.request.state] ? "In progress" : "Use the Invest card"}</span>
+                      {REQUEST_STATE_PILL[chainBal.request.state] ? (
+                        <span className={chainBal.request.state === "Claimable" ? "badge badge-green" : "badge badge-amber"} data-testid="chain-request-state">
+                          {REQUEST_STATE_PILL[chainBal.request.state]}
+                        </span>
+                      ) : (
+                        <span className="small">Use the Invest card</span>
+                      )}
                     </td>
                   </tr>
                 )}
@@ -332,7 +344,7 @@ function PortfolioInner() {
                 <th>Description</th>
                 <th className="right">Amount</th>
                 <th>State</th>
-                <th>Reference</th>
+                <th>Transaction</th>
               </tr>
             </thead>
             <tbody>
@@ -374,7 +386,15 @@ function PortfolioInner() {
                       {l.state}
                     </span>
                   </td>
-                  <td className="mono tiny">{l.txHash ?? <span className="faint">{isEvm ? "practice · simulated" : "simulated"}</span>}</td>
+                  <td className="mono tiny nowrap">
+                    {l.txHash ? (
+                      <a className="link-primary" href={`${CHAINS[EXPECTED_CHAIN_ID].explorer}/tx/${l.txHash}`} target="_blank" rel="noreferrer" title={l.txHash}>
+                        {l.txHash.slice(0, 8)}…{l.txHash.slice(-6)} ↗
+                      </a>
+                    ) : (
+                      <span className="faint">{isEvm ? "practice · simulated" : "simulated"}</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
