@@ -379,6 +379,14 @@ test("3.6 on-chain record: Discover row, vault agent page and treasury all read 
   await expect(t).toContainText("chain data", { timeout: 30_000 });
   await expect(t).toContainText(`${(Number(feeBal) / 1e6).toFixed(4)} USDG`);
   await expect(t).toContainText(feeWallet);
+  // itemised receipts from the indexer: one deposit fee, one withdrawal fee
+  const receipts = t.getByTestId("fee-receipts");
+  await expect(receipts).toContainText("from the indexer");
+  await expect(receipts.getByTestId("fee-receipt").filter({ hasText: "deposit fee" })).toHaveCount(1);
+  await expect(receipts.getByTestId("fee-receipt").filter({ hasText: "withdrawal fee" })).toHaveCount(1);
+  // liabilities vs revenue and the reserve read straight from the chain
+  await expect(page.getByTestId("revenue-total")).toHaveText(`${(Number(feeBal) / 1e6).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} USDG`);
+  await expect(page.getByTestId("reserve-cash")).not.toHaveText("…", { timeout: 20_000 });
 });
 
 test("3.7 credits: sign in → USDG top-up in the wallet → server verifies on-chain → balance, ledger, treasury", async ({ page }) => {
@@ -408,6 +416,9 @@ test("3.7 credits: sign in → USDG top-up in the wallet → server verifies on-
   const entry = page.getByTestId("credit-entry").first();
   await expect(entry).toContainText("Top-up");
   await expect(entry).toContainText("+$5.0000");
+  await expect(entry).toContainText("receipt verified");
+  await expect(page.getByTestId("credits-guard")).toContainText("Covers at least");
+  await expect(panel.getByTestId("credits-how")).toContainText("Each transaction is credited once");
 
   // the server credited it to this wallet only, and once
   const api = await page.evaluate(async () => (await fetch("/api/credits", { cache: "no-store" })).json());

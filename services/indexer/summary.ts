@@ -56,6 +56,8 @@ export interface VaultSummary {
   counts: { deposits: number; withdrawalsRequested: number; withdrawalsSettled: number; claims: number; navReports: number };
   pendingWithdrawals: { investor: string; shares: string; state: "ClosingPositions" | "Settling" }[];
   recent: { type: string; t: number | null; block: number; txHash: string; investor?: string; amount?: string; shares?: string }[];
+  /** each USDG transfer from the vault to the fee recipient, newest first (last 50) */
+  feeReceipts: { t: number | null; block: number; txHash: string; amount: string; kind: "deposit" | "withdrawal" }[];
 }
 
 const order = (a: { blockNumber: number; logIndex: number }, b: { blockNumber: number; logIndex: number }) => a.blockNumber - b.blockNumber || a.logIndex - b.logIndex;
@@ -146,6 +148,24 @@ export function buildSummary(input: {
   }
   const withdrawalFees = feesToTreasury > depositFees ? feesToTreasury - depositFees : 0n;
 
+  // itemised receipts: a fee transfer in the same transaction as a Deposit event is a deposit fee,
+  // anything else the vault sends the fee recipient is charged at settlement (withdrawal fee)
+  const depositTxs = new Set(events.filter((e) => e.event === "Deposit").map((e) => e.txHash.toLowerCase()));
+  const feeReceipts = fee
+    ? [...input.transfers]
+        .filter((t) => t.to.toLowerCase() === fee)
+        .sort(order)
+        .slice(-50)
+        .reverse()
+        .map((t) => ({
+          t: t.ts ?? null,
+          block: t.blockNumber,
+          txHash: t.txHash,
+          amount: big(t.value).toString(),
+          kind: (depositTxs.has(t.txHash.toLowerCase()) ? "deposit" : "withdrawal") as "deposit" | "withdrawal",
+        }))
+    : [];
+
   // return and drawdown from the share-price series (first deposit mints at 1.0)
   const prices = navSeries.filter((p) => p.navPerShare > 0).map((p) => p.navPerShare);
   const navNow = prices.at(-1) ?? 1;
@@ -195,5 +215,6 @@ export function buildSummary(input: {
     counts: c,
     pendingWithdrawals: [...pending.entries()].map(([investor, p]) => ({ investor, shares: p.shares.toString(), state: p.state })),
     recent,
+    feeReceipts,
   };
 }

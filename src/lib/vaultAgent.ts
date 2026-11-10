@@ -40,6 +40,8 @@ export interface VaultSummary {
   counts: { deposits: number; withdrawalsRequested: number; withdrawalsSettled: number; claims: number; navReports: number };
   pendingWithdrawals: { investor: string; shares: string; state: string }[];
   recent: { type: string; t: number | null; block: number; txHash: string; investor?: string; amount?: string; shares?: string }[];
+  /** itemised fee transfers (indexers older than this field omit it) */
+  feeReceipts?: { t: number | null; block: number; txHash: string; amount: string; kind: "deposit" | "withdrawal" }[];
   live: {
     reportedAssets: string | null;
     totalShares: string | null;

@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { VAULT_ADDRESS, explorerAddress } from "@/lib/chain";
 import { usd, pct } from "@/lib/format";
 import { cx } from "@/lib/format";
 import { useVaultFeed, VaultTotals } from "@/components/VaultActivity";
 import { chainLabel, usdg } from "@/lib/vaultAgent";
+import { BalanceSheet, CreditsHowItWorks, FeeReceipts, useCreditStats } from "@/components/TreasuryLive";
+import { useCredits } from "@/lib/creditsClient";
 
 const PERIODS = [
   {
@@ -79,6 +81,7 @@ function OnChainTreasury() {
             </div>
           </div>
           <VaultTotals s={s} compact />
+          <FeeReceipts s={s} />
           <span className="tiny mono" style={{ wordBreak: "break-all" }}>
             {chainLabel(s.chainId)} · fee recipient {s.live.feeRecipient ?? "unknown"} · indexed to block {s.lastBlock.toLocaleString("en-US")}
           </span>
@@ -96,28 +99,9 @@ function OnChainTreasury() {
   );
 }
 
-interface CreditStats {
-  ok: boolean;
-  soldUsd: number;
-  topups: number;
-  buyers: number;
-  consumedUsd: number;
-  calls: number;
-  providerCostUsd: number;
-  appFeeUsd: number;
-  outstandingUsd: number;
-  error?: string;
-}
-
 /** Copilot credits as recorded in the ledger (3.7): sold, consumed, provider pass-through, app fee, liability. */
-function CreditsTreasury() {
-  const [s, setS] = useState<CreditStats | null>(null);
-  useEffect(() => {
-    fetch("/api/credits/stats", { cache: "no-store" })
-      .then((r) => r.json())
-      .then(setS)
-      .catch((e) => setS({ ok: false, error: String(e) } as CreditStats));
-  }, []);
+function CreditsTreasury({ s }: { s: ReturnType<typeof useCreditStats> }) {
+  const cfg = useCredits().config;
   const f = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
   return (
     <section className="rcard rcard-pad stack gap-12" data-testid="treasury-credits">
@@ -148,12 +132,14 @@ function CreditsTreasury() {
       ) : (
         <span className="small">{s ? `The credits ledger is unavailable (${s.error ?? "error"}).` : "Reading the credits ledger…"}</span>
       )}
+      <CreditsHowItWorks reserveUsd={cfg?.mode === "enforce" ? cfg.reserveUsd : null} appFeePct={cfg?.pricing.appFeePct ?? null} />
     </section>
   );
 }
 
 export default function TreasuryPage() {
   const feed = useVaultFeed();
+  const credits = useCreditStats();
   const [period, setPeriod] = useState(PERIODS[0]);
   const grossReceipts = period.depositFees + period.platformShare + period.aiAppFees;
   // Creator payouts come out of the gross creator fee (leaving the 20% platform share),
@@ -191,7 +177,8 @@ export default function TreasuryPage() {
       </div>
 
       <OnChainTreasury />
-      <CreditsTreasury />
+      <BalanceSheet s={feed.summary} credits={credits} />
+      <CreditsTreasury s={credits} />
 
       <div className="row gap-10 wrap" style={{ alignItems: "baseline" }}>
         <h2 className="rcard-title">Accounting model</h2>

@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { CHAINS, type ChainId } from "@/lib/chain";
 import { pendingTopup, topUp, useCredits, verifyTopup } from "@/lib/creditsClient";
+import { CreditsHowItWorks } from "@/components/TreasuryLive";
 import { signInWithEthereum, useAuth } from "@/lib/session";
 
 const money = (n: number, d = 2) => `$${n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
@@ -55,6 +56,21 @@ export default function CreditsPanel() {
               {cfg?.model ? `AI model: ${cfg.model}` : "no AI model set up — the free rules parser answers"}
             </span>
           </div>
+          {cfg?.mode === "enforce" && c.balanceUsd !== null && cfg.reserveUsd > 0 && (
+            <div className={`credits-guard ${c.balanceUsd >= cfg.reserveUsd ? "ok" : "low"}`} data-testid="credits-guard">
+              {c.balanceUsd >= cfg.reserveUsd ? (
+                <>
+                  Covers at least <b>{Math.floor(c.balanceUsd / cfg.reserveUsd)}</b> AI review{Math.floor(c.balanceUsd / cfg.reserveUsd) === 1 ? "" : "s"} at
+                  worst-case cost ({money(cfg.reserveUsd, 4)} each). A call only starts when the balance covers it.
+                </>
+              ) : (
+                <>
+                  Below the {money(cfg.reserveUsd, 4)} needed for one worst-case AI call, so AI review is paused — nothing is charged and
+                  the balance can&apos;t go negative. Top up to resume.
+                </>
+              )}
+            </div>
+          )}
 
           {cfg?.topupsEnabled ? (
             <div className="stack gap-8">
@@ -115,7 +131,7 @@ export default function CreditsPanel() {
                       <td className="small">
                         {e.kind === "topup" ? (
                           <>
-                            Top-up ·{" "}
+                            Top-up <span className="badge badge-green" title="Credited after the server read this transaction's receipt on-chain">receipt verified ✓</span>{" "}
                             {explorer && e.txHash ? (
                               <a className="link-primary" href={`${explorer}/tx/${e.txHash}`} target="_blank" rel="noreferrer">
                                 {e.txHash.slice(0, 10)}…
@@ -145,6 +161,7 @@ export default function CreditsPanel() {
           )}
         </>
       )}
+      <CreditsHowItWorks reserveUsd={cfg?.mode === "enforce" ? cfg.reserveUsd : null} appFeePct={cfg?.pricing.appFeePct ?? null} />
       <span className="mono-note">
         Unused credits stay yours (prepaid), they are not platform revenue. Each AI call costs its real token usage
         {cfg?.pricing.inPerMTok != null ? ` ($${cfg.pricing.inPerMTok}/$${cfg.pricing.outPerMTok} per 1M tokens in/out` : " (provider-reported cost"}

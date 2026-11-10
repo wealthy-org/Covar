@@ -146,3 +146,18 @@ test("agent detail: legend separates agent / benchmark / twin, and the three rec
   await expect(page.getByTestId("panel-rules")).toContainText(/Summary only/);
   await expect(page.getByTestId("panel-rules")).not.toContainText(/Enter when/i);
 });
+
+test("economics: fee calculator simulates deposit/withdrawal fees, caps the creator fee at 20% and splits it 80/20", async ({ page }) => {
+  await page.goto("/economics");
+  const calc = page.getByTestId("fee-calculator");
+  await expect(calc.getByTestId("calc-deposit-fee")).toHaveText("$10.10"); // 1000 × 1% + 0.10
+  await calc.getByTestId("calc-profit").fill("100");
+  await calc.getByTestId("calc-fee-input").fill("35");
+  await expect(calc.getByTestId("calc-fee-pct")).toHaveText("20%");
+  await expect(calc.getByTestId("calc-cap-msg")).toContainText("Capped at 20%");
+  await expect(calc.getByTestId("calc-creator-fee")).toHaveText("$20.00");
+  await expect(calc.getByTestId("calc-creator-share")).toHaveText("$16.00");
+  await expect(calc.getByTestId("calc-platform-share")).toHaveText("$4.00");
+  await calc.getByTestId("calc-withdraw").fill("500");
+  await expect(calc.getByTestId("calc-withdraw-fee")).toHaveText("$5.10");
+});

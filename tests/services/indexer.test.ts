@@ -67,6 +67,20 @@ const tr = (to: string, value: string, block: number): TransferOut => ({ to, val
   check("chain id passed through", s.chainId === 46630);
 }
 
+/* itemised fee receipts: deposit fee (same tx as Deposit) vs fee charged at settlement */
+{
+  const dep = ev("Deposit", 20, { investor: A, assetsIn: U(100), fee: U(1.1), shares: U(98.9) });
+  const transfers = [{ ...tr(FEE, U(1.1), 20), txHash: dep.txHash }, tr(FEE, U(1.109), 25), tr(TRADE, U(5), 26)];
+  const s = buildSummary({ vault: "0xv", lastBlock: 30, events: [dep], transfers, feeRecipient: FEE, tradingAccount: TRADE });
+  check(
+    "fee receipts: only fee-recipient transfers, newest first, deposit vs withdrawal",
+    s.feeReceipts.length === 2 && s.feeReceipts[0].kind === "withdrawal" && s.feeReceipts[0].amount === U(1.109) && s.feeReceipts[1].kind === "deposit" && s.feeReceipts[1].amount === U(1.1),
+    s.feeReceipts,
+  );
+  const none = buildSummary({ vault: "0xv", lastBlock: 30, events: [dep], transfers });
+  check("fee receipts empty without a known fee recipient", none.feeReceipts.length === 0);
+}
+
 /* drawdown, two investors, out-of-order input */
 {
   const events = [

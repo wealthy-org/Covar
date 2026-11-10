@@ -1215,3 +1215,16 @@ html.rv [data-rv="wait"] .fx-area { opacity: 0; }
 .reader-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-top: 1px solid #eef1f6; }
 .reader-row:first-child { border-top: 0; }
 .reader-out { font-size: 11.5px; line-height: 1.6; padding: 6px 10px; background: #f6f8fc; border: 1px solid #eef1f6; border-radius: 4px; color: var(--ink); overflow-x: auto; white-space: pre; }
+
+/* credits explainer */
+.credits-how { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: #f8f9fc; }
+.credits-how ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; }
+.credits-how li { display: flex; gap: 10px; align-items: flex-start; }
+.credits-how .wd-dot { flex: none; border-color: var(--primary); color: var(--primary); }
+@media (max-width: 760px) { .credits-how ol { grid-template-columns: 1fr; } }
+/* fee calculator */
+.fee-range { width: 100%; accent-color: var(--primary); }
+.fee-presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.credits-guard { font-size: 12.5px; padding: 8px 12px; border-radius: var(--radius); border: 1px solid #cfe8da; border-left: 3px solid var(--positive); background: #f6fbf8; color: var(--ink-2); }
+.credits-guard.low { border-color: #f1dcb4; border-left-color: var(--warning); background: #fdf8ef; }
+.legend-sq { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 4px; vertical-align: 0; }
