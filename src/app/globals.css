@@ -1140,3 +1140,21 @@ html.rv [data-rv="wait"] .fx-area { opacity: 0; }
 }
 .prov-tip:hover::after { opacity: 1; transform: translate(0, -50%); }
 @media (prefers-reduced-motion: reduce) { .pill-onchain .pill-dot { animation: none; } }
+
+/* ------------------------------ Studio practice ------------------------------ */
+.practice-card { display: flex; flex-direction: column; gap: 14px; padding: 18px 18px 14px; }
+.practice-card-on { border-color: #b9e6cc; box-shadow: inset 3px 0 0 0 #16a34a; }
+.practice-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.ticker { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 4px; background: #fbfcfe; }
+.ticker-price { font-size: 26px; line-height: 1.15; color: var(--ink); padding: 0 4px; margin: 0 -4px; border-radius: 3px; }
+.ticker-arrow { font-size: 10px; animation: ticker-fade 1.6s ease-out forwards; }
+.flash-up { animation: flash-up 900ms ease-out; }
+.flash-down { animation: flash-down 900ms ease-out; }
+@keyframes flash-up { 0% { background: rgba(19, 122, 75, 0.18); color: var(--positive); } 100% { background: transparent; color: var(--ink); } }
+@keyframes flash-down { 0% { background: rgba(180, 35, 24, 0.14); color: var(--negative); } 100% { background: transparent; color: var(--ink); } }
+@keyframes ticker-fade { 0%, 60% { opacity: 1; } 100% { opacity: 0.35; } }
+.ledger-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: 4px 22px 18px; }
+.ledger-num { font-size: 20px; color: var(--ink); }
+.ledger-num.pos { color: var(--positive); } .ledger-num.neg { color: var(--negative); }
+@media (max-width: 720px) { .ledger-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px 16px 16px; } }
+@media (prefers-reduced-motion: reduce) { .flash-up, .flash-down, .ticker-arrow { animation: none; } }

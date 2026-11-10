@@ -56,9 +56,32 @@ export function priceFor(snapshot: PriceSnapshot | null, market: string): number
   return symbol ? snapshot.prices[symbol] : undefined;
 }
 
+const LABEL: Record<PriceSnapshot["source"], string> = {
+  lighter: "Lighter perps · Robinhood Chain",
+  hyperliquid: "Hyperliquid perp mids (fallback)",
+  coinbase: "Coinbase spot (fallback)",
+  none: "unavailable",
+};
+/** Short venue name for badges ("LIVE MARKS · LIGHTER"). */
+export const VENUE_SHORT: Record<PriceSnapshot["source"], string> = {
+  lighter: "Lighter",
+  hyperliquid: "Hyperliquid",
+  coinbase: "Coinbase",
+  none: "—",
+};
+
 export function sourceLabel(snapshot: PriceSnapshot | null): string {
   if (!snapshot) return "connecting…";
-  if (snapshot.ok) return snapshot.source === "hyperliquid" ? "Hyperliquid perp mids" : "Coinbase spot";
+  if (snapshot.ok) return LABEL[snapshot.source];
   if (snapshot.stale) return "stale cache";
   return "unavailable";
 }
+
+export function bookFor(snapshot: PriceSnapshot | null, market: string): { bid: number; ask: number } | undefined {
+  if (!snapshot?.ok) return undefined;
+  const symbol = MARKET_TO_SYMBOL[market];
+  return symbol ? snapshot.books?.[symbol] : undefined;
+}
+
+/** Feed freshness: a snapshot older than this is shown as stale, not live. */
+export const STALE_AFTER_MS = 15_000;

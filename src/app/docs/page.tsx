@@ -86,7 +86,7 @@ export default function DocsPage() {
           <p>Five record types, never blended into one number:</p>
           <ul>
             <li><strong>Historical backtest</strong> — pinned dataset, explicit fees/slippage/funding, reproducible seed. Never shown as live performance.</li>
-            <li><strong>Practice</strong> — isolated ledger, simulated fills. Practise marks follow the live feed (Hyperliquid perp mids, Coinbase spot fallback) whenever it is reachable; when it is not, the session says &quot;simulated&quot; and keeps the simulated wave. Fills are always simulated.</li>
+            <li><strong>Practice</strong> — isolated ledger, simulated fills. Practise marks follow the live venue feed (Lighter perps on Robinhood Chain: mark price and top of book; Hyperliquid mids, then Coinbase spot, as labelled fallbacks) whenever it is reachable; a long fills at the best ask, and stopped sessions are saved to a practice history that never touches My money; when it is not, the session says &quot;simulated&quot; and keeps the simulated wave. Fills are always simulated.</li>
             <li><strong>Test exchange</strong> — real orders on testnet with faucet funds. Not comparable to real money.</li>
             <li><strong>Real money</strong> — reconciled fills, fees and funding.</li>
             <li><strong>Vault share price</strong> — on-chain NAV per share with deposit/withdraw events.</li>

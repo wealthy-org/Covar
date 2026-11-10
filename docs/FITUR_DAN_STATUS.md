@@ -39,7 +39,7 @@ Yang belum: **trading sungguhan di Lighter**, audit, mainnet, token/staking, dan
 | **Copilot AI** | `/studio` | Model AI (sekarang **Groq**, bisa Gemini/OpenAI/Anthropic/Orbio) membantu menyusun aturan; selalu dalam batas risiko. Kalau AI gagal atau kredit habis → parser aturan gratis, tidak dipotong | 🟢 |
 | **Editor visual & code view** | `/studio` | Ubah aturan langsung, lihat diff antar versi, validasi otomatis | ✅ |
 | **Backtest** | `/studio` | Uji ke data historis (EMA, RSI, ATR, Bollinger, volume) dengan fee, slippage, funding eksplisit; hasil bisa diulang persis | ✅ |
-| **Practice** | `/studio`, halaman agen | Jalankan strategi dengan harga live tapi uang simulasi, berlabel jelas | ✅ |
+| **Practice** | `/studio`, halaman agen | Kartu agen/draft: pilih modal pura-pura → Start/Stop. Harga live dari Lighter (Robinhood Chain; mark + bid/ask), badge *Live marks · Lighter*, ticker naik/turun, Practice ledger (saldo, ekuitas, P&L, posisi), riwayat sesi terpisah dari My money | ✅ |
 | **Lifecycle & publish** | `/studio` | Versi & riwayat; publish butuh backtest + persetujuan; investor diberi notice 48 jam sebelum versi baru berlaku | ✅ |
 | **Halaman creator** | `/creators/[id]` | Profil dan daftar agen creator | ✅ |
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getPrices } from "@/lib/prices";
 
 /**
- * Server-side price proxy. The browser never calls Hyperliquid/Coinbase directly.
+ * Server-side price proxy. The browser never calls Lighter/Hyperliquid/Coinbase directly.
  * A failure is surfaced as `ok:false` — the UI then says "unavailable" and practice
  * falls back to simulated ticks rather than displaying invented prices.
  */

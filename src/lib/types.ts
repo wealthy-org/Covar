@@ -186,6 +186,25 @@ export interface PracticeRun {
   lastPrice?: number;
   entryPrice?: number;
   priceSource?: string;
+  /** Display name and market, so a saved session reads on its own after the agent changes. */
+  name?: string;
+  market?: string;
+  /** What ran: "draft" or "v3". Practice runs the draft by default (reference behaviour). */
+  runs?: string;
+  /** Simulated position. Fills are simulated: a long enters at the best ask when the book is known. */
+  side?: "long";
+  sizeUnits?: number;
+  notionalUsd?: number;
+  /** Equity after each mark, newest last (capped). */
+  equity?: number[];
+  lastMarkAt?: string;
+  stoppedAt?: string;
+}
+
+/** A finished practice run, kept in its own history. Never written to the portfolio ledger. */
+export interface PracticeSession extends PracticeRun {
+  id: string;
+  stoppedAt: string;
 }
 
 export type NotificationKind = "practice" | "publish" | "money" | "risk" | "copilot" | "system";
@@ -215,6 +234,8 @@ export interface CovarState {
   creators: Creator[];
   portfolio: Portfolio;
   practice: Record<string, PracticeRun>;
+  /** Finished practice runs, newest first. Optional for snapshots saved before it existed. */
+  practiceSessions?: PracticeSession[];
   drafts: Strategy[];
   liveStrategy: Record<string, Strategy>;
 }

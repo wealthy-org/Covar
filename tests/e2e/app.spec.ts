@@ -34,7 +34,7 @@ test("price route returns a real snapshot with provenance", async ({ page }) => 
   expect(res.status()).toBe(200);
   const json = await res.json();
   expect(typeof json.ok).toBe("boolean");
-  expect(["hyperliquid", "coinbase", "none"]).toContain(json.source);
+  expect(["lighter", "hyperliquid", "coinbase", "none"]).toContain(json.source);
   if (json.ok) {
     expect(Object.keys(json.prices).length).toBeGreaterThan(0);
     expect(json.prices.ETH).toBeGreaterThan(0);

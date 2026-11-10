@@ -38,7 +38,7 @@ Evidence column points at a test, a screenshot or a file — not at an intention
 
 | # | Feature | Evidence |
 | --- | --- | --- |
-| 19 | **Market-data adapter**: live perp marks from Hyperliquid mids, Coinbase spot fallback, server-side proxy with 5 s cache, outage is reported not hidden | `src/lib/prices.ts`, `GET /api/prices`, E2E "price route returns a real snapshot" |
+| 19 | **Market-data adapter**: live perp marks from Lighter (Robinhood Chain: mark price + best bid/ask), Hyperliquid mids then Coinbase spot as labelled fallbacks, server-side proxy with 2 s cache, outage is reported not hidden | `src/lib/prices.ts`, `GET /api/prices`, E2E "price route returns a real snapshot" |
 | 20 | **Practice on live marks**: a session started while the feed is healthy follows real prices (P&L = actual price move × exposure); otherwise it keeps the simulated wave — and the label says which | `src/lib/store.ts tickPractice`, E2E "practice session…" |
 | 21 | **Copilot with model provider seam**: `AI_PROVIDER_API_KEY` present (Orbio gateway, Anthropic or OpenAI; `AI_PROVIDER`/`AI_MODEL`) → a model proposes a *bounded interpretation* (style/market/timeframe/risk/numbers); the deterministic engine encodes, validates and clamps it. Without a key, the rules parser answers. Every draft says which engine produced it; a failed model call degrades to the parser with a `rules-fallback` label | `src/lib/copilot.ts`, `POST /api/copilot`, E2E copilot tests |
 

@@ -2,7 +2,7 @@
 
 import { mergeChainActivity, type VaultEvent } from "./chainActivity";
 import { useSyncExternalStore } from "react";
-import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, NotificationKind, PracticeRun, Strategy } from "./types";
+import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, NotificationKind, PracticeRun, PracticeSession, Strategy } from "./types";
 import { vaultFeed } from "./vaultAgent";
 import { getWalletProvider } from "./wallet";
 import { explainError } from "./vaultTx";
@@ -81,8 +81,14 @@ function pushNow(keepalive = false) {
     });
 }
 
-function scheduleDbSync() {
+function scheduleDbSync(lazy = false) {
   if (typeof window === "undefined") return;
+  // high-frequency updates (practice marks every 2 s) batch into one write per 20 s
+  // instead of rewriting the session rows on every tick; real actions still sync in 1.5 s
+  if (lazy) {
+    if (!syncTimer) syncTimer = setTimeout(() => void pushNow(), 20_000);
+    return;
+  }
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => void pushNow(), 1500);
 }
@@ -148,12 +154,12 @@ function pushNotification(
   return { ...state, notifications: [entry, ...state.notifications].slice(0, 80) };
 }
 
-function set(next: CovarState) {
+function set(next: CovarState, opts: { lazySync?: boolean } = {}) {
   state = { ...next };
   localVersion++;
   markDirty(true);
   persist();
-  scheduleDbSync();
+  scheduleDbSync(!!opts.lazySync);
   emit();
 }
 
@@ -452,45 +458,71 @@ export const actions = {
   },
 
   /* ----------------------------- practice ----------------------------- */
-  startPractice(agentId: string, capitalUsd: number, marks?: { price?: number; source?: string }) {
+  /**
+   * Explicit practice setup → start. Live prices, pretend money, simulated fills.
+   * With a live mark the session holds a simulated long sized from the agent's own
+   * risk settings (position % × leverage of the pretend capital); a long fills at the
+   * best ask when the venue book is known, so the spread is paid like a real entry.
+   * Without a mark it falls back to simulated ticks and says so.
+   */
+  startPractice(
+    agentId: string,
+    capitalUsd: number,
+    marks?: { price?: number; source?: string; ask?: number },
+    meta?: { name?: string; market?: string; runs?: string; notionalPct?: number }
+  ) {
+    const live = marks?.price !== undefined && marks.price > 0;
+    const fill = live ? (marks?.ask && marks.ask > 0 ? marks.ask : marks!.price!) : undefined;
+    const notionalPct = Math.min(500, Math.max(5, meta?.notionalPct ?? 35));
+    const notionalUsd = live ? (capitalUsd * notionalPct) / 100 : undefined;
+    const sizeUnits = live && fill ? notionalUsd! / fill : undefined;
+    const agent = state.agents.find((a) => a.id === agentId);
     const run: PracticeRun = {
       agentId,
       startedAt: new Date().toISOString(),
       capitalUsd,
-      pnlUsd: 0,
+      // entering at the ask costs the half-spread straight away
+      pnlUsd: live && sizeUnits ? sizeUnits * (marks!.price! - fill!) : 0,
       ticks: 0,
       status: "running",
-      priceMode: marks?.price !== undefined ? "live" : "simulated",
+      priceMode: live ? "live" : "simulated",
       lastPrice: marks?.price,
-      entryPrice: marks?.price,
+      entryPrice: fill,
       priceSource: marks?.source,
+      name: meta?.name ?? agent?.name ?? agentId,
+      market: meta?.market ?? agent?.market,
+      runs: meta?.runs ?? (agent ? `v${agent.version}` : "draft"),
+      side: "long",
+      sizeUnits,
+      notionalUsd,
+      equity: [capitalUsd],
+      lastMarkAt: new Date().toISOString(),
     };
-    const agent = state.agents.find((a) => a.id === agentId);
     const next = {
       ...state,
       practice: { ...state.practice, [agentId]: run },
       agents: state.agents.map((a) =>
-        a.id === agentId ? { ...a, status: "practice" as const, provenance: "practice" as const, ...(a.isMine ? {} : {}) } : a
+        a.id === agentId && a.status !== "live" ? { ...a, status: "practice" as const, provenance: "practice" as const } : a
       ),
     };
     set(
       pushNotification(next, {
         kind: "practice",
-        title: `Practice started · ${agent?.name ?? agentId}`,
+        title: `Practice started · ${run.name}`,
         body:
           run.priceMode === "live"
-            ? `Marks are live (${marks?.source ?? "market feed"}); fills are simulated. $${capitalUsd.toLocaleString()} practice capital.`
-            : `Price feed unavailable — simulated ticks, simulated fills. $${capitalUsd.toLocaleString()} practice capital.`,
-        href: `/agents/${agentId}`,
+            ? `Live marks from ${marks?.source ?? "the market feed"}; fills are simulated. $${capitalUsd.toLocaleString()} pretend money, isolated from your account.`
+            : `Price feed unavailable — simulated ticks, simulated fills. $${capitalUsd.toLocaleString()} pretend money, isolated from your account.`,
+        href: agent ? `/agents/${agentId}` : "/studio",
       })
     );
   },
   /**
    * One mark for a running practice session.
    *
-   * With a live price the P&L is a real price move applied to the session's exposure;
-   * without one it falls back to the simulated wave and the run keeps saying so.
-   * Exposure is 35% of practice capital — the same order of size the rule caps allow.
+   * Live: P&L = simulated position × (mark − entry fill) — a real price move, nothing invented.
+   * Simulated: the labelled fallback wave. Sessions from older snapshots (no position size)
+   * keep the previous incremental formula.
    */
   tickPractice(agentId: string, price?: number) {
     const run = state.practice[agentId];
@@ -498,38 +530,53 @@ export const actions = {
 
     let nextPnl: number;
     let lastPrice = run.lastPrice;
-    if (run.priceMode === "live" && price !== undefined && run.lastPrice !== undefined && run.lastPrice > 0) {
-      const ret = (price - run.lastPrice) / run.lastPrice;
+    let lastMarkAt = run.lastMarkAt;
+    const livePrice = run.priceMode === "live" && price !== undefined && price > 0;
+    if (livePrice && run.sizeUnits && run.entryPrice) {
+      nextPnl = run.sizeUnits * (price! - run.entryPrice);
+      lastPrice = price;
+      lastMarkAt = new Date().toISOString();
+    } else if (livePrice && run.lastPrice !== undefined && run.lastPrice > 0) {
+      const ret = (price! - run.lastPrice) / run.lastPrice;
       nextPnl = run.pnlUsd + run.capitalUsd * 0.35 * ret;
       lastPrice = price;
+      lastMarkAt = new Date().toISOString();
+    } else if (run.priceMode === "live") {
+      // live session, feed momentarily missing: hold the last mark, never invent one
+      nextPnl = run.pnlUsd;
     } else {
       const wave = Math.sin(run.ticks / 3.1) * 0.55 + (Math.random() - 0.45) * 1.4;
       nextPnl = run.pnlUsd + wave * 1.6;
     }
+    const equity = [...(run.equity ?? [run.capitalUsd]).slice(-239), run.capitalUsd + nextPnl];
     set({
       ...state,
-      practice: { ...state.practice, [agentId]: { ...run, ticks: run.ticks + 1, pnlUsd: nextPnl, lastPrice } },
+      practice: { ...state.practice, [agentId]: { ...run, ticks: run.ticks + 1, pnlUsd: nextPnl, lastPrice, lastMarkAt, equity } },
       agents: state.agents.map((a) =>
-        a.id === agentId
+        a.id === agentId && a.provenance === "practice"
           ? { ...a, returnPct: (nextPnl / run.capitalUsd) * 100, curve: [...a.curve.slice(-119), 100 + (nextPnl / run.capitalUsd) * 100] }
           : a
       ),
-    });
+    }, { lazySync: true });
   },
+  /** Stop → the run is saved to the practice history. Balances, holdings and the money ledger are untouched. */
   stopPractice(agentId: string) {
     const run = state.practice[agentId];
-    if (!run) return;
-    const agent = state.agents.find((a) => a.id === agentId);
+    if (!run || run.status !== "running") return;
+    const stoppedAt = new Date().toISOString();
+    const stopped: PracticeRun = { ...run, status: "stopped", stoppedAt };
+    const session: PracticeSession = { ...stopped, id: `ps-${Date.now().toString(36)}`, stoppedAt, equity: (run.equity ?? []).slice(-120) };
     const next = {
       ...state,
-      practice: { ...state.practice, [agentId]: { ...run, status: "stopped" as const } },
+      practice: { ...state.practice, [agentId]: stopped },
+      practiceSessions: [session, ...(state.practiceSessions ?? [])].slice(0, 50),
     };
     set(
       pushNotification(next, {
         kind: "practice",
-        title: `Practice stopped · ${agent?.name ?? agentId}`,
-        body: `Result kept under the practice label: ${run.pnlUsd >= 0 ? "+" : "−"}$${Math.abs(run.pnlUsd).toFixed(2)} over ${run.ticks} marks. Not a real-money record.`,
-        href: `/agents/${agentId}`,
+        title: `Practice session saved · ${run.name ?? agentId}`,
+        body: `${run.pnlUsd >= 0 ? "+" : "−"}$${Math.abs(run.pnlUsd).toFixed(2)} on $${run.capitalUsd.toLocaleString()} pretend money over ${run.ticks} marks. Saved to practice history only — your balances and My money ledger are unchanged.`,
+        href: "/studio#practice-history",
       })
     );
   },
