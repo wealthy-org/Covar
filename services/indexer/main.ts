@@ -88,6 +88,8 @@ interface Checkpoint {
   vaultAddress: string | null;
   lastBlock: number;
   updatedAt: string;
+  /** chain the history came from: the same deployer + nonce gives the same vault address on testnet and mainnet */
+  chainId?: number;
 }
 
 const stateFile = path.join(DIR, "indexer.jsonl");
@@ -230,7 +232,20 @@ async function pollOnce() {
   chainId ??= Number(BigInt(await rpc<string>("eth_chainId", [])));
   if (!meta.asset) meta = { asset: (await call(vault, "asset")) as string | null, feeRecipient: (await call(vault, "feeRecipient")) as string | null };
   head = Number(BigInt(await rpc<string>("eth_blockNumber", [])));
+  // same address, different chain (testnet v2 and mainnet share 0x9f01…): never mix histories.
+  // Older checkpoints carry no chainId; a lastBlock beyond this chain's head gives them away.
+  if ((checkpoint.chainId !== undefined && checkpoint.chainId !== chainId) || checkpoint.lastBlock > head) {
+    console.warn(`[indexer] checkpoint is from another chain (chain ${checkpoint.chainId ?? "?"}, block ${checkpoint.lastBlock} > head ${head}) — re-indexing from scratch`);
+    for (const f of [stateFile, transferFile]) fs.rmSync(f, { force: true });
+    checkpoint = { vaultAddress: vault, lastBlock: -1, updatedAt: new Date().toISOString(), chainId };
+  }
+  checkpoint.chainId = chainId;
   if (checkpoint.lastBlock < 0) checkpoint.lastBlock = (await findDeployBlock(vault, head)) - 1;
+  if (checkpoint.lastBlock > head) {
+    lastError = `INDEXER_START_BLOCK ${process.env.INDEXER_START_BLOCK} is above this chain's head ${head} — set it to the vault's deploy block`;
+    checkpoint.lastBlock = -1;
+    return;
+  }
 
   // Small ranges (forced by the RPC) are cheap, so allow more of them per poll.
   const maxIter = chunk < CHUNK ? Math.max(CHUNKS_PER_POLL, 200) : CHUNKS_PER_POLL;
@@ -265,7 +280,7 @@ async function pollOnce() {
     fs.mkdirSync(DIR, { recursive: true });
     if (decoded.length) fs.appendFileSync(stateFile, decoded.map((e) => JSON.stringify(e)).join("\n") + "\n");
     if (transfers.length) fs.appendFileSync(transferFile, transfers.map((e) => JSON.stringify(e)).join("\n") + "\n");
-    checkpoint = { vaultAddress: vault, lastBlock: to, updatedAt: new Date().toISOString() };
+    checkpoint = { vaultAddress: vault, lastBlock: to, updatedAt: new Date().toISOString(), chainId };
     saveCheckpoint(checkpoint);
   }
   lastError = null;

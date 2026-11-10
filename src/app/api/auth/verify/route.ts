@@ -14,7 +14,9 @@ export async function POST(req: Request) {
     res.headers.append("set-cookie", sessionCookie(s.token, req, Math.floor((s.expiresAt.getTime() - Date.now()) / 1000)));
     return res;
   } catch (e) {
-    const status = e instanceof AuthError ? e.status : 500;
-    return NextResponse.json({ ok: false, error: (e as Error).message }, { status });
+    if (e instanceof AuthError) return NextResponse.json({ ok: false, error: e.message }, { status: e.status });
+    // database or server fault: log the detail, never show it to the user
+    console.error("[auth]", e);
+    return NextResponse.json({ ok: false, error: "Sign-in is temporarily unavailable. Please try again in a few minutes." }, { status: 503 });
   }
 }

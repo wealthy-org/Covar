@@ -33,6 +33,7 @@ export async function GET() {
       { headers: { "cache-control": "no-store" } },
     );
   } catch (err) {
-    return NextResponse.json({ ok: false, error: (err as Error).message }, { status: 503 });
+    console.error("[credits/stats]", err);
+    return NextResponse.json({ ok: false, error: "Credit figures are temporarily unavailable." }, { status: 503 });
   }
 }
