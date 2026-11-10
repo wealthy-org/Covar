@@ -55,9 +55,9 @@ export function ChainStatusRow({ compact = false }: { compact?: boolean }) {
   return (
     <div className="panel stack gap-8" style={{ padding: 14 }}>
       <div className="row between gap-8">
-        <span className="small strong">Robinhood Chain</span>
+        <span className="small strong">RPC node · Robinhood Chain</span>
         {status?.ok ? (
-          <span className={cx("badge", status.chainIdMatches ? "badge-green" : "badge-red")}>
+          <span className={cx("badge", status.chainIdMatches ? "badge-green" : "badge-red")} data-testid="rpc-status">
             <span className="dot dot-live" />
             {status.chainIdMatches ? "Connected" : `Wrong chain ${status.chainId}`}
           </span>
@@ -67,8 +67,8 @@ export function ChainStatusRow({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div className="row between">
-        <span className="tiny">Network</span>
-        <span className="small strong">
+        <span className="tiny">Chain ID</span>
+        <span className="small strong num" data-testid="rpc-chain-id">
           {status?.chainId ? `${status.chainId}` : EXPECTED_CHAIN_ID} ·{" "}
           {chain.isMainnet ? "mainnet" : EXPECTED_CHAIN_ID === 31337 ? "local rehearsal" : "testnet"}
         </span>

@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { EXPECTED_CHAIN_ID, explorerAddress } from "@/lib/chain";
+import { useEffect, useState } from "react";
+import { CHAINS, EXPECTED_CHAIN_ID, explorerAddress } from "@/lib/chain";
+import { SEL } from "@/lib/vaultTx";
 import { ChainStatusRow, OnChainVaultCard, useChain } from "@/components/ChainPanel";
-import { cx, shortAddr, timeAgo, usd } from "@/lib/format";
+import { cx, shortAddr, timeAgo } from "@/lib/format";
 
 const GATES = [
-  ["Contracts compile", "pass", "solidity 0.8.24 · 2 contracts"],
-  ["Unit + integration suite", "pass", "18 vault assertions + 39 execution-plane assertions"],
-  ["Order execution & risk gate", "partial", "paper venue behind the real service boundary; no live adapter"],
-  ["Acceptance criteria (brief §15)", "partial", "UI paths covered; live venue adapter missing"],
-  ["Testnet deployment", "pass", "CovarVault on 46630 · source verified on the explorer · Paxos test USDG"],
-  ["End-to-end deposit → trade → withdraw", "pending", "run it from the vault console; live venue adapter still missing"],
-  ["Mainnet deployment", "blocked", "refused until the four gates above pass"],
+  ["Contracts compile", "pass", "solidity 0.8.24 · CovarVault v2"],
+  ["Contract suite", "pass", "25 contract tests · operator, indexer, reconciliation and e2e suites in CI"],
+  ["Order execution & risk gate", "partial", "risk gate and Lighter client in place; the operator runs with venue \"none\" until a funded venue account is approved"],
+  ["Testnet deployment", "pass", "CovarVault v2 on 46630 · source verified on Sourcify (exact match)"],
+  ["End-to-end deposit → withdraw → claim", "pass", "run on testnet 46630 with the live operator — see the transactions below"],
+  ["Testnet soak (7 days)", "pending", "operator posting NAV every few hours; monitor alerts to Telegram"],
+  ["Mainnet deployment", "blocked", "small controlled run only after the soak and a security review"],
 ];
 
 export default function ChainPage() {
@@ -58,8 +60,14 @@ export default function ChainPage() {
           </div>
           <div className="row between">
             <span className="tiny">Vault address</span>
-            <span className="small mono">{address ? shortAddr(address, 6) : "—"}</span>
+            <span className="small mono" title={address ?? ""} data-testid="vault-address">{address ? shortAddr(address, 6) : "—"}</span>
           </div>
+          {address && (
+            <div className="row between">
+              <span className="tiny">Source code</span>
+              <VerifiedBadge address={address} />
+            </div>
+          )}
           <div className="row between">
             <span className="tiny">Explorer</span>
             <span className="small">
@@ -121,11 +129,18 @@ export default function ChainPage() {
                 </thead>
                 <tbody>
                   {[
+                    ["Vault contract", address ?? ""],
+                    [
+                      "NAV confirmed on-chain",
+                      vault.lastNavUpdate === 0
+                        ? "never reported"
+                        : `${new Date(vault.lastNavUpdate * 1000).toLocaleString("en-GB")} · ${Math.max(1, Math.round(vault.navAgeSeconds / 60))} min ago`,
+                    ],
                     ["Asset", `${vault.assetSymbol} · ${vault.assetDecimals} decimals`],
                     ["Asset contract", shortAddr(vault.asset, 6)],
                     ["NAV per share", `${vault.navPerShare.toFixed(6)} ${vault.assetSymbol}`],
-                    ["Reported assets", `${usd(vault.reportedAssets)} ${vault.assetSymbol}`],
-                    ["Shares outstanding", vault.totalShares.toLocaleString("en-US", { maximumFractionDigits: 2 })],
+                    ["Reported assets", `${vault.reportedAssets.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${vault.assetSymbol}`],
+                    ["Total shares", vault.totalShares.toLocaleString("en-US", { maximumFractionDigits: 4 })],
                     ["Deposit fee", `${vault.depositFeeBps / 100}% + ${vault.depositFeeFlat.toFixed(2)}`],
                     ["Withdrawal fee", `${vault.withdrawalFeeBps / 100}% + ${vault.withdrawalFeeFlat.toFixed(2)}`],
                     ["Max NAV age", `${Math.round(vault.maxNavAgeSeconds / 60)} min`],
@@ -134,7 +149,7 @@ export default function ChainPage() {
                     ["Operator (isolated signer)", vault.operator],
                     ["Fee recipient", vault.feeRecipient],
                   ].map(([k, v]) => (
-                    <tr key={k}>
+                    <tr key={k} data-testid="vault-param">
                       <td className="small">{k}</td>
                       <td className={cx("right mono tiny", v === "STALE — deposits rejected" ? "neg" : "")}>{v}</td>
                     </tr>
@@ -144,6 +159,7 @@ export default function ChainPage() {
             </div>
           )}
           {vaultError && !vault && <span className="tiny neg">{vaultError}</span>}
+          {address && <RecentTxs address={address} roles={vault ? { [vault.owner.toLowerCase()]: "Owner", [vault.operator.toLowerCase()]: "Operator", [vault.feeRecipient.toLowerCase()]: "Fee recipient" } : {}} />}
         </div>
 
         <div className="stack gap-16 sticky-side">
@@ -200,6 +216,146 @@ npm run test:contracts`}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ verification */
+
+const SOURCIFY = "https://sourcify.dev/server";
+
+/** Live check against Sourcify — the badge is never hard-coded. */
+function VerifiedBadge({ address }: { address: string }) {
+  const [state, setState] = useState<{ match: string | null; at?: string } | "loading" | "error">("loading");
+  useEffect(() => {
+    if (EXPECTED_CHAIN_ID === 31337) {
+      setState({ match: null });
+      return;
+    }
+    let off = false;
+    fetch(`${SOURCIFY}/v2/contract/${EXPECTED_CHAIN_ID}/${address}`)
+      .then((r) => (r.status === 404 ? { match: null } : r.json()))
+      .then((d) => !off && setState({ match: d?.match ?? null, at: d?.verifiedAt }))
+      .catch(() => !off && setState("error"));
+    return () => {
+      off = true;
+    };
+  }, [address]);
+  if (state === "loading") return <span className="tiny">checking…</span>;
+  if (state === "error") return <span className="tiny">Sourcify unreachable</span>;
+  if (!state.match) return <span className="badge badge-amber">Not verified</span>;
+  return (
+    <a
+      className="badge badge-green"
+      href={`https://repo.sourcify.dev/${EXPECTED_CHAIN_ID}/${address}`}
+      target="_blank"
+      rel="noreferrer noopener"
+      title={state.at ? `verified ${new Date(state.at).toLocaleString("en-GB")}` : undefined}
+      data-testid="sourcify-badge"
+    >
+      ✓ Sourcify · {state.match === "exact_match" ? "Exact match" : "Match"} ↗
+    </a>
+  );
+}
+
+/* ------------------------------------------------------------------ explorer history */
+
+const METHOD_BY_SELECTOR: Record<string, string> = Object.fromEntries(Object.entries(SEL).map(([k, v]) => [v, k]));
+
+interface ExplorerTx {
+  hash: string;
+  method: string;
+  from: string;
+  ts: string;
+  ok: boolean;
+}
+
+/** Latest transactions to the vault, read from the chain's Blockscout explorer API. */
+function RecentTxs({ address, roles }: { address: string; roles: Record<string, string> }) {
+  const explorer = CHAINS[EXPECTED_CHAIN_ID].explorer;
+  const [txs, setTxs] = useState<ExplorerTx[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (EXPECTED_CHAIN_ID === 31337) return;
+    let off = false;
+    const load = () =>
+      fetch(`${explorer}/api/v2/addresses/${address}/transactions`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (off) return;
+          const items = (d?.items ?? []) as {
+            hash: string;
+            method?: string;
+            raw_input?: string;
+            from?: { hash: string };
+            timestamp: string;
+            result?: string;
+          }[];
+          setTxs(
+            items.slice(0, 8).map((t) => ({
+              hash: t.hash,
+              method: t.method || METHOD_BY_SELECTOR[(t.raw_input ?? "").slice(0, 10)] || (t.raw_input ?? "").slice(0, 10) || "transfer",
+              from: t.from?.hash ?? "",
+              ts: t.timestamp,
+              ok: t.result === "success",
+            }))
+          );
+          setErr(null);
+        })
+        .catch(() => !off && setErr("Explorer unreachable right now."));
+    void load();
+    const t = setInterval(load, 60_000);
+    return () => {
+      off = true;
+      clearInterval(t);
+    };
+  }, [address, explorer]);
+
+  if (EXPECTED_CHAIN_ID === 31337) return null;
+  return (
+    <div className="stack gap-8" data-testid="recent-txs">
+      <div className="row between">
+        <span className="small strong">Recent vault transactions</span>
+        <a className="tiny link-primary" href={`${explorer}/address/${address}`} target="_blank" rel="noreferrer noopener">
+          All on Blockscout ↗
+        </a>
+      </div>
+      {err && <span className="tiny neg">{err}</span>}
+      {!txs && !err && <span className="tiny">Loading from the explorer…</span>}
+      {txs && txs.length === 0 && <span className="tiny">No transactions to the vault yet.</span>}
+      {txs && txs.length > 0 && (
+        <div className="table-wrap panel">
+          <table className="table table-min">
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>From</th>
+                <th>When</th>
+                <th className="right">Tx</th>
+              </tr>
+            </thead>
+            <tbody>
+              {txs.map((t) => (
+                <tr key={t.hash}>
+                  <td className="mono tiny">
+                    <span className={cx("badge", t.ok ? "badge-outline" : "badge-red")}>{t.method}</span>
+                  </td>
+                  <td className="tiny">
+                    {roles[t.from.toLowerCase()] ? <strong>{roles[t.from.toLowerCase()]}</strong> : "Investor"}{" "}
+                    <span className="mono">{shortAddr(t.from, 4)}</span>
+                  </td>
+                  <td className="tiny nowrap">{timeAgo(t.ts)}</td>
+                  <td className="right">
+                    <a className="mono tiny link-primary" href={`${explorer}/tx/${t.hash}`} target="_blank" rel="noreferrer noopener">
+                      {t.hash.slice(0, 8)}…{t.hash.slice(-4)} ↗
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

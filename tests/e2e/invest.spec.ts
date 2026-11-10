@@ -310,9 +310,19 @@ test("account switch: header and SIWE follow the wallet account that actually si
 test("owner console v2: caps, limits and trading account from the browser", async ({ page }) => {
   test.setTimeout(240_000);
   await installWallet(page, keyOf(ROLES.owner));
+  // /chain: RPC node status and live vault parameters
+  await page.goto(`/chain`);
+  await expect(page.getByTestId("rpc-status")).toHaveText(/Connected/, { timeout: 30_000 });
+  await expect(page.getByTestId("rpc-chain-id")).toContainText("31337");
+  await expect(page.getByTestId("vault-param").filter({ hasText: "Operator" })).toContainText(/0x[0-9a-f]{40}/i, { timeout: 30_000 });
+
   await page.goto(`/chain/console`);
   // an already-authorised wallet is picked up silently (eth_accounts) — no connect click needed
   await expect(page.getByTestId("console-role").first()).toContainText(/owner/i, { timeout: 20_000 });
+  // read contract: every no-input view function answers from the chain
+  await page.getByTestId("read-all").click();
+  await expect(page.getByTestId("read-navPerShare").getByTestId("read-result")).toContainText(/\d+ {2}\(\d/, { timeout: 30_000 });
+  await expect(page.getByTestId("read-operator").getByTestId("read-result")).toContainText(/^0x[0-9a-fA-F]{40}$/, { timeout: 30_000 });
   await expect(page.getByTestId("console-caps")).toContainText("1,000", { timeout: 20_000 });
 
   await page.getByLabel("TVL cap").fill("2000");

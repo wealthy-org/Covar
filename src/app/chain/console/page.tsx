@@ -27,6 +27,7 @@ import {
   type PendingRequest,
 } from "@/lib/vaultTx";
 import { cx, shortAddr } from "@/lib/format";
+import { ContractReader } from "@/components/ContractReader";
 
 type LogEntry = { id: number; label: string; hash?: string; status: "pending" | "success" | "failed" | "error"; detail?: string };
 const STORAGE_KEY = "covar.console.vault";
@@ -379,6 +380,14 @@ export default function VaultConsolePage() {
           )}
           {readError && <span className="tiny neg">{readError}</span>}
         </div>
+      </div>
+
+      {/* read contract */}
+      {VAULT_ADDRESS && <ContractReader address={VAULT_ADDRESS} sym={sym} />}
+
+      <div className="stack" style={{ gap: 2 }}>
+        <span className="small strong">Write contract · signed in your wallet</span>
+        <span className="tiny">Each write is simulated first; a revert is explained before any wallet prompt. Role checks happen on-chain.</span>
       </div>
 
       {/* flow checklist */}
