@@ -113,6 +113,7 @@ contract CovarVault {
     event OperatorChanged(address indexed previous, address indexed next);
     event Paused(bool depositsPaused, bool closeOnly);
     event LimitsChanged(uint256 maxTotalAssets, uint256 maxDepositPerTx);
+    event MinDepositChanged(uint256 minDeposit);
     event TradingAccountChanged(address indexed previous, address indexed next);
     event AllocatedToVenue(address indexed to, uint256 amount);
 
@@ -326,6 +327,15 @@ contract CovarVault {
         maxTotalAssets = _maxTotalAssets;
         maxDepositPerTx = _maxDepositPerTx;
         emit LimitsChanged(_maxTotalAssets, _maxDepositPerTx);
+    }
+
+    /// @notice Set the smallest accepted deposit (gross). Must be positive and fit under the per-deposit cap;
+    /// a deposit whose fee would consume it is still rejected by deposit().
+    function setMinDeposit(uint256 _minDeposit) external onlyOwner {
+        require(_minDeposit > 0, "min = 0");
+        require(_minDeposit <= maxDepositPerTx, "min > deposit cap");
+        minDeposit = _minDeposit;
+        emit MinDepositChanged(_minDeposit);
     }
 
     /// @notice Set the single venue deposit address trading capital may be sent to.

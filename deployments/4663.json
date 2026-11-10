@@ -1,0 +1,25 @@
+{
+  "chainId": 4663,
+  "network": "robinhood-mainnet",
+  "contract": "CovarVault",
+  "address": "0x157981BfE77DE791d19416aDef6FefeCACCaF877",
+  "txHash": "0x4e0eaa35a6086226a5e5e28e80ca597fdf2bfac1438ff689bae11fa587fef6a0",
+  "blockNumber": 110936185,
+  "deployer": "0x1FBaDaFb2056Af662aa11732e86B28aF550af0d9",
+  "constructorArgs": {
+    "asset": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "feeRecipient": "0x8b43ac0F705D18d2C42D12Eb2FABe3e45e1045b1",
+    "operator": "0x3d2faC269954487a63f51bF059701fbD9647e3Bf"
+  },
+  "sharesDecimals": 6,
+  "assetSymbol": "USDG",
+  "assetDecimals": 6,
+  "compiler": "0.8.24",
+  "deployedAt": "2026-11-10T14:04:34.927Z",
+  "notes": "Mainnet. Single-owner admin (no multisig) — documented accepted risk. Launch with small controlled value.",
+  "launchLimits": {
+    "maxTotalAssets": "100",
+    "maxDepositPerTx": "25",
+    "txHash": "0xcec5aa288b14f1c65f551eba8b107138a8c1a733a838e82e75d8dade651f8339"
+  }
+}

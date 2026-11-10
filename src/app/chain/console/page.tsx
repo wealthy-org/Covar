@@ -58,6 +58,7 @@ export default function VaultConsolePage() {
   const [settleInput, setSettleInput] = useState("");
   const [allocateInput, setAllocateInput] = useState("");
   const [tvlCapInput, setTvlCapInput] = useState("");
+  const [minDepInput, setMinDepInput] = useState("");
   const [perTxCapInput, setPerTxCapInput] = useState("");
   const [tradingInput, setTradingInput] = useState("");
 
@@ -104,7 +105,7 @@ export default function VaultConsolePage() {
       setQueue(q);
       setV2(x);
     } catch (e) {
-      setReadError(`${(e as Error).message}. If the RPC is unreachable, enable a VPN and retry.`);
+      setReadError(`${(e as Error).message}. If the network is unreachable, try again or use another connection.`);
     }
   }, [vaultAddr, account]);
 
@@ -616,6 +617,17 @@ export default function VaultConsolePage() {
                 }
               >
                 Set limits
+              </button>
+            </div>
+            <span className="tiny strong">Minimum deposit</span>
+            <div className="row gap-8 wrap">
+              <input className="input num" style={{ maxWidth: 160 }} placeholder={`min ${sym}`} value={minDepInput} onChange={(e) => setMinDepInput(e.target.value)} aria-label="Minimum deposit" />
+              <button
+                className="btn btn-secondary"
+                disabled={disabled}
+                onClick={() => run(`Set minimum deposit ${minDepInput} ${sym}`, vault!.address, () => calldata(SEL.setMinDeposit, encUint(parseUnits(minDepInput, dec))))}
+              >
+                Set minimum
               </button>
             </div>
             <span className="tiny strong">Trading account (venue deposit address)</span>

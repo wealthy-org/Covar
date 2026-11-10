@@ -10,7 +10,7 @@ import { InvestPanel } from "@/components/InvestPanel";
 import { WalletGate } from "@/components/WalletGate";
 import CreditsPanel from "@/components/CreditsPanel";
 import { useCredits } from "@/lib/creditsClient";
-import { CHAINS, EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
+import { CHAINS, EXPECTED_CHAIN_ID, IS_MAINNET, NETWORK_LABEL, VAULT_ADDRESS, readVault } from "@/lib/chain";
 import { formatUnits, readAccount, type RequestState } from "@/lib/vaultTx";
 import { VAULT_AGENT_ID } from "@/lib/vaultAgent";
 import { getWalletProvider } from "@/lib/wallet";
@@ -144,7 +144,7 @@ function PortfolioInner() {
             <span className="tiny">Wallet</span>
             <span className="mono">{shortAddr(portfolio.wallet, 5)}</span>
           </div>
-          <span className="badge badge-amber">Testnet 46630</span>
+          <span className={`badge ${IS_MAINNET ? "badge-green" : "badge-amber"}`}>{NETWORK_LABEL}</span>
         </div>
       </div>
 

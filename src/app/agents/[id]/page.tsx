@@ -9,7 +9,7 @@ import { PROVENANCE_LABEL } from "@/lib/types";
 import type { Agent, Decision } from "@/lib/types";
 import { cx, dateOnly, dateTime, hashSeed, pct, pctSigned, timeAgo, usd } from "@/lib/format";
 import { activeVersionOf, copilotWhy, fmtRemaining, noticeWindow, resolveVersions } from "@/lib/versions";
-import { VAULT_ADDRESS } from "@/lib/chain";
+import { NETWORK_LABEL, VAULT_ADDRESS } from "@/lib/chain";
 import { VAULT_AGENT_ID, chainLabel } from "@/lib/vaultAgent";
 import VaultActivity, { useVaultFeed } from "@/components/VaultActivity";
 import { useMounted } from "@/lib/useMounted";
@@ -139,8 +139,8 @@ export default function AgentPage() {
             title={vaultFeedState.status === "loading" ? "Reading the vault from chain…" : "On-chain vault unavailable"}
             body={
               vaultFeedState.status === "loading"
-                ? "This record is built from the deployed vault's chain logs."
-                : `The indexer did not answer (${vaultFeedState.error ?? "unknown"}). No figures are shown until it does.`
+                ? "This record is built from the vault's on-chain history."
+                : "The vault's history couldn't be loaded right now. Please try again in a minute — no figures are estimated in the meantime."
             }
             action={
               <Link className="btn btn-primary" href="/explore">
@@ -1012,8 +1012,8 @@ export default function AgentPage() {
               <span className="mf-chip">Withdrawals go to your wallet only</span>
             </div>
             <div>
-              <KV k="Vault contract" v={vault ? (onChain ? vault.address : "demo record · not deployed") : "no vault"} />
-              <KV k="Network" v={isVaultAgent && vaultFeedState.summary ? `${chainLabel(vaultFeedState.summary.chainId)} · ${vaultFeedState.summary.chainId}` : "Robinhood Chain testnet · 46630"} />
+              <KV k="Vault contract" v={vault ? (onChain ? vault.address : "example vault · not on-chain") : "no vault"} />
+              <KV k="Network" v={isVaultAgent && vaultFeedState.summary ? `${chainLabel(vaultFeedState.summary.chainId)} · ${vaultFeedState.summary.chainId}` : NETWORK_LABEL} />
               <KV k="Deposit fee" v={`${vault?.depositFeePct ?? PLATFORM_LIMITS.depositFeePct}% + ${(vault?.depositFeeFlat ?? PLATFORM_LIMITS.depositFeeFlat).toFixed(2)} USDG`} />
               {isVaultAgent ? (
                 <KV k="Withdrawal fee" v="1% + 0.10 USDG, taken at settlement · no performance fee" />
@@ -1055,7 +1055,7 @@ export default function AgentPage() {
           setError(null);
         }}
         title={`Deposit into ${agent.name}`}
-        subtitle="USDG on Robinhood Chain testnet"
+        subtitle={`Practice deposit · ${NETWORK_LABEL}`}
         footer={
           <>
             <span className="tiny">
@@ -1091,7 +1091,7 @@ export default function AgentPage() {
           </div>
           <div className="panel" style={{ padding: "4px 14px" }}>
             <KV k="Asset" v="USDG · 6 decimals" />
-            <KV k="Network" v="Robinhood Chain testnet (46630)" />
+            <KV k="Network" v={NETWORK_LABEL} />
             <KV k="Deposit fee" v={`${PLATFORM_LIMITS.depositFeePct}% + ${PLATFORM_LIMITS.depositFeeFlat.toFixed(2)} USDG`} />
             <KV k="Net into vault" v={usd(Math.max(0, deposit - feePreview))} />
             <KV k="Shares at NAV" v={(Math.max(0, deposit - feePreview) / (vault?.navPerShare ?? 1)).toFixed(4)} />
@@ -1099,7 +1099,7 @@ export default function AgentPage() {
           </div>
           <div className="notice notice-warn">
             <div>
-              Testnet only. Shares are minted against the NAV shown; if the NAV is stale beyond the allowed window the contract
+              Practice vault: no real funds move. Shares are minted against the NAV shown; if the NAV is stale beyond the allowed window the contract
               rejects the deposit rather than minting at a manipulable price.
             </div>
           </div>

@@ -2,20 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CHAINS, EXPECTED_CHAIN_ID, explorerAddress } from "@/lib/chain";
-import { SEL } from "@/lib/vaultTx";
+import { CHAINS, EXPECTED_CHAIN_ID, IS_MAINNET, explorerAddress } from "@/lib/chain";
+import { SEL, ethCall, readV2, type VaultV2 } from "@/lib/vaultTx";
 import { ChainStatusRow, OnChainVaultCard, useChain } from "@/components/ChainPanel";
 import { cx, shortAddr, timeAgo } from "@/lib/format";
-
-const GATES = [
-  ["Contracts compile", "pass", "solidity 0.8.24 · CovarVault v2"],
-  ["Contract suite", "pass", "25 contract tests · operator, indexer, reconciliation and e2e suites in CI"],
-  ["Order execution & risk gate", "partial", "risk gate and Lighter client in place; the operator runs with venue \"none\" until a funded venue account is approved"],
-  ["Testnet deployment", "pass", "CovarVault v2 on 46630 · source verified on Sourcify (exact match)"],
-  ["End-to-end deposit → withdraw → claim", "pass", "run on testnet 46630 with the live operator — see the transactions below"],
-  ["Testnet soak (7 days)", "pending", "operator posting NAV every few hours; monitor alerts to Telegram"],
-  ["Mainnet deployment", "blocked", "small controlled run only after the soak and a security review"],
-];
 
 export default function ChainPage() {
   const { status, vault, vaultError, address, chain } = useChain();
@@ -25,19 +15,15 @@ export default function ChainPage() {
       <div className="row between wrap gap-16">
         <div className="stack gap-8" style={{ maxWidth: 660 }}>
           <span className="label-dot">Chain</span>
-          <h1 className="page-title">Deployment &amp; on-chain state</h1>
+          <h1 className="page-title">Contract &amp; network</h1>
           <p className="page-sub">
-            Covar deploys testnet first (46630), runs the full suite, proves the complete deposit → trade → withdraw
-            path, and only then moves to mainnet (4663) with a small controlled value. This page reports what is actually
-            deployed — not what is planned.
+            Everything on this page is read live from {chain.name}: the vault contract, its settings and its latest
+            transactions. Nothing here is typed in by hand — check any value yourself on the explorer.
           </p>
         </div>
         <div className="row gap-8">
-          <Link href="/docs#network" className="btn btn-secondary">
-            Deployment runbook
-          </Link>
           <Link href="/chain/console" className="btn btn-secondary" data-testid="open-console">
-            Vault console
+            Contract console
           </Link>
           <Link href="/portfolio" className="btn btn-primary">
             My money
@@ -49,13 +35,13 @@ export default function ChainPage() {
         <ChainStatusRow />
         <div className="panel stack gap-8" style={{ padding: 14 }}>
           <div className="row between">
-            <span className="small strong">Configured vault</span>
+            <span className="small strong">Covar vault</span>
             <span className={cx("badge", address ? "badge-green" : "badge-amber")}>
-              {address ? "On-chain" : "Not deployed"}
+              {address ? "Live" : "Coming soon"}
             </span>
           </div>
           <div className="row between">
-            <span className="tiny">Expected chain</span>
+            <span className="tiny">Chain ID</span>
             <span className="small strong num">{EXPECTED_CHAIN_ID}</span>
           </div>
           <div className="row between">
@@ -86,36 +72,18 @@ export default function ChainPage() {
           </div>
           <span className="tiny">
             {address
-              ? "The vault UI reads live contract state instead of the simulated ledger."
-              : "Vault flows are simulated against the contract spec. Nothing is deployed, so nothing can be lost."}
+              ? "Every vault figure on Covar is read from this contract."
+              : "The vault opens soon. Nothing can be deposited until it is live."}
           </span>
         </div>
-        <div className="panel stack gap-8" style={{ padding: 14 }}>
-          <span className="small strong">Network facts verified on-chain</span>
-          {[
-            ["46630 chain id", status?.ok && status.chainId === 46630 ? "confirmed" : "unverified"],
-            ["4663 chain id", "confirmed (0x1237)"],
-            ["USDG decimals (mainnet)", "6 · symbol USDG"],
-            ["WETH decimals (mainnet)", "18 · symbol WETH"],
-            ["USDG on testnet 46630", "0x7E95…802F · Paxos-published · 6 decimals"],
-          ].map(([k, v]) => (
-            <div key={k} className="row between">
-              <span className="tiny">{k}</span>
-              <span className={cx("tiny strong", String(v).startsWith("no code") ? "neg" : "")}>{v}</span>
-            </div>
-          ))}
-          <span className="tiny">
-            Token addresses in the brief resolve on mainnet only. On testnet the vault uses the USDG address Paxos (the
-            issuer) publishes for Robinhood Testnet — a matching ticker at another address is not the same token.
-          </span>
-        </div>
+        <NetworkFacts vaultAsset={vault?.asset ?? null} assetSymbol={vault?.assetSymbol ?? "USDG"} assetDecimals={vault?.assetDecimals ?? 6} chainOk={!!status?.ok && status.chainId === EXPECTED_CHAIN_ID} />
       </div>
 
       <div className="two-col">
         <div className="card card-pad stack gap-12">
           <div className="row between">
             <span className="small strong">Live vault read</span>
-            <span className="tiny">refreshed every 20s · read-only RPC</span>
+            <span className="tiny">refreshed every 20 s · read live</span>
           </div>
           <OnChainVaultCard showLinks={false} />
           {vault && (
@@ -163,59 +131,91 @@ export default function ChainPage() {
         </div>
 
         <div className="stack gap-16 sticky-side">
-          <div className="card card-pad stack gap-10">
-            <span className="small strong">Deployment gates</span>
-            {GATES.map(([label, state, detail]) => (
-              <div key={label} className="stack" style={{ gap: 1 }}>
-                <div className="row between gap-8">
-                  <span className="tiny strong">{label}</span>
-                  <span
-                    className={cx(
-                      "badge",
-                      state === "pass" ? "badge-green" : state === "partial" ? "badge-blue" : state === "blocked" ? "badge-red" : "badge-amber"
-                    )}
-                  >
-                    {state}
-                  </span>
-                </div>
-                <span className="tiny">{detail}</span>
-              </div>
-            ))}
-            <hr className="divider" />
-            <span className="tiny">
-              The deploy script refuses mainnet without <span className="mono">CONFIRM_MAINNET=yes</span>, and refuses any
-              chain where the collateral token has no bytecode or wrong decimals.
-            </span>
-          </div>
-
-          <div className="card card-pad stack gap-8">
-            <span className="small strong">Commands</span>
-            <div className="code" style={{ fontSize: 11 }}>
-              {`# read-only checks
-npm run preflight:testnet
-
-# deploy (needs a funded key)
-npm run deploy:testnet
-
-# contract suite
-npm run test:contracts`}
-            </div>
-            <span className="tiny">
-              Keys stay in the shell or a secret manager. Never in this repository, never in a chat message.
-            </span>
-          </div>
-
-          <div className="card card-pad stack gap-8">
-            <span className="small strong">RPC access</span>
-            <span className="tiny">
-              Mainnet and testnet are both Arbitrum Orbit chains with public endpoints; the local rehearsal node is only
-              for exercising the read path. Indonesian ISPs frequently block these hosts — if a read fails, enable a VPN
-              and retry before filing it as an outage.
-            </span>
-            {status?.checkedAt && <span className="tiny">Last check {timeAgo(status.checkedAt)}</span>}
-          </div>
+          <ContractSafety address={address} navMaxMin={vault ? Math.round(vault.maxNavAgeSeconds / 60) : null} sym={vault?.assetSymbol ?? "USDG"} />
+          {status?.checkedAt && <span className="tiny">Network checked {timeAgo(status.checkedAt)}</span>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ network facts */
+
+function NetworkFacts({ vaultAsset, assetSymbol, assetDecimals, chainOk }: { vaultAsset: string | null; assetSymbol: string; assetDecimals: number; chainOk: boolean }) {
+  const chain = CHAINS[EXPECTED_CHAIN_ID];
+  const rows: [string, React.ReactNode][] = [
+    ["Network", chain.name],
+    ["Chain ID", `${EXPECTED_CHAIN_ID} · ${chainOk ? "confirmed by the node" : "checking…"}`],
+    ["Gas token", chain.gasToken],
+    [
+      "Collateral",
+      vaultAsset ? (
+        EXPECTED_CHAIN_ID === 31337 ? (
+          `${assetSymbol} · ${shortAddr(vaultAsset, 4)}`
+        ) : (
+          <a className="link-primary" href={explorerAddress(vaultAsset)} target="_blank" rel="noreferrer noopener">
+            {assetSymbol} · {shortAddr(vaultAsset, 4)} ↗
+          </a>
+        )
+      ) : (
+        "USDG"
+      ),
+    ],
+    ["Decimals", String(assetDecimals)],
+  ];
+  return (
+    <div className="panel stack gap-8" style={{ padding: 14 }} data-testid="network-facts">
+      <span className="small strong">Network</span>
+      {rows.map(([k, v]) => (
+        <div key={k} className="row between">
+          <span className="tiny">{k}</span>
+          <span className="tiny strong">{v}</span>
+        </div>
+      ))}
+      <span className="tiny">
+        {IS_MAINNET
+          ? "USDG is the Paxos-issued dollar stablecoin. Only this contract address is the real token — a matching name at another address is not."
+          : "Test network: tokens have no value."}
+      </span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ safety rules */
+
+function ContractSafety({ address, navMaxMin, sym }: { address: string | null; navMaxMin: number | null; sym: string }) {
+  const [v2, setV2] = useState<VaultV2 | null>(null);
+  const [minDep, setMinDep] = useState<bigint | null>(null);
+  useEffect(() => {
+    if (!address) return;
+    readV2(address, EXPECTED_CHAIN_ID).then(setV2).catch(() => setV2(null));
+    ethCall(address, SEL.minDeposit, EXPECTED_CHAIN_ID)
+      .then((h) => setMinDep(BigInt(h)))
+      .catch(() => setMinDep(null));
+  }, [address]);
+  const u = (x: bigint) => (Number(x) / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const rules: [string, string][] = [
+    [
+      "Deposit limits",
+      v2 ? `At most ${u(v2.maxDepositPerTx)} ${sym} per deposit and ${u(v2.maxTotalAssets)} ${sym} in total.${minDep !== null ? ` Minimum ${u(minDep)} ${sym}.` : ""}` : "Per-deposit and total caps, plus a minimum deposit.",
+    ],
+    ["Fresh price only", `Deposits are refused if the vault price is older than ${navMaxMin ?? "the allowed"} minutes, so shares can't be minted at a stale price.`],
+    ["Price jumps are capped", "The operator can't move the vault value by more than the contract's maximum change in one report."],
+    ["Withdrawals pay only you", "A claim always sends USDG to the wallet that requested it — no one can redirect it."],
+    ["Trading money has one destination", "Funds can only go to the trading account set by the owner, and money reserved for claims can never be moved."],
+    ["Claims never pause", "Even if deposits are paused or the vault is close-only, settled withdrawals can always be claimed."],
+  ];
+  return (
+    <div className="card card-pad stack gap-10" data-testid="contract-safety">
+      <span className="small strong">Built into the contract</span>
+      {rules.map(([t, d]) => (
+        <div key={t} className="stack" style={{ gap: 1 }}>
+          <span className="tiny strong" style={{ color: "var(--ink)" }}>
+            ✓ {t}
+          </span>
+          <span className="tiny">{d}</span>
+        </div>
+      ))}
     </div>
   );
 }

@@ -173,7 +173,7 @@ test("investor: SIWE sign-in → approve → deposit → withdraw → operator s
   await page.getByRole("button", { name: /connect/i }).first().click();
 
   // Sign-In with Ethereum from the wallet menu
-  await page.locator("button.nav-btn[title^='Wallet']").first().click();
+  await page.locator("button.nav-btn[title^='Your wallet']").first().click();
   const siwe = page.getByTestId("siwe-panel");
   await siwe.getByRole("button", { name: "Sign in with Ethereum" }).click();
   await expect(siwe.getByText("Signed in", { exact: true })).toBeVisible({ timeout: 20_000 });
@@ -274,7 +274,7 @@ test("account switch: header and SIWE follow the wallet account that actually si
   const investor = new Wallet(keyOf(ROLES.investor)).address;
   await installWallet(page, [keyOf(ROLES.owner), keyOf(ROLES.investor)]);
   const select = (i: number) => page.evaluate((n) => (window as unknown as { __covarSelect: (i: number) => Promise<void> }).__covarSelect(n), i);
-  const header = page.locator("button.nav-btn[title^='Wallet']").first();
+  const header = page.locator("button.nav-btn[title^='Your wallet']").first();
   const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`.toUpperCase();
 
   await page.goto("/portfolio");
@@ -381,7 +381,7 @@ test("3.6 on-chain record: Discover row, vault agent page and treasury all read 
   await expect(t).toContainText(feeWallet);
   // itemised receipts from the indexer: one deposit fee, one withdrawal fee
   const receipts = t.getByTestId("fee-receipts");
-  await expect(receipts).toContainText("from the indexer");
+  await expect(receipts).toHaveAttribute("data-source", "indexer");
   await expect(receipts.getByTestId("fee-receipt").filter({ hasText: "deposit fee" })).toHaveCount(1);
   await expect(receipts.getByTestId("fee-receipt").filter({ hasText: "withdrawal fee" })).toHaveCount(1);
   // liabilities vs revenue and the reserve read straight from the chain

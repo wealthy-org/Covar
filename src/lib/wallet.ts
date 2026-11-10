@@ -1,3 +1,4 @@
+import { IS_MAINNET } from "./chain";
 /**
  * Wallet providers are pluggable. The app only ever sees the WalletProvider
  * interface, and every provider declares exactly what "connected" proves:
@@ -116,7 +117,8 @@ let active: WalletProvider | null = null;
 
 export function getWalletProvider(): WalletProvider {
   if (active) return active;
-  const want = (process.env.NEXT_PUBLIC_WALLET_PROVIDER || "session").toLowerCase();
+  // mainnet always uses the real browser wallet — the practice session wallet is for testnet/local only
+  const want = IS_MAINNET ? "evm" : (process.env.NEXT_PUBLIC_WALLET_PROVIDER || "session").toLowerCase();
   const make = BY_ID[want] ?? BY_ID.session;
   active = make();
   return active;

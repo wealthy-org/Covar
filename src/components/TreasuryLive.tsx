@@ -74,10 +74,10 @@ export function FeeReceipts({ s }: { s: VaultSummary | null }) {
 
   const rows = fromIndexer ?? fallback;
   return (
-    <div className="stack gap-8" data-testid="fee-receipts">
+    <div className="stack gap-8" data-testid="fee-receipts" data-source={fromIndexer ? "indexer" : fallback ? "explorer" : undefined}>
       <div className="row between wrap gap-8">
         <span className="small strong">Fee receipts · vault → fee recipient</span>
-        <span className="tiny">{fromIndexer ? "from the indexer" : fallback ? "from the explorer" : ""}</span>
+        <span className="tiny">{rows ? "on-chain transfers" : ""}</span>
       </div>
       {!rows ? (
         <span className="tiny">Reading transfers…</span>

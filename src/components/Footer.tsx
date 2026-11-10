@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { IS_MAINNET, NETWORK_LABEL } from "@/lib/chain";
 
 const COLS: { title: string; links: { href: string; label: string; ext?: boolean }[] }[] = [
   {
@@ -18,8 +19,7 @@ const COLS: { title: string; links: { href: string; label: string; ext?: boolean
       { href: "/docs", label: "Docs" },
       { href: "/docs#fees", label: "Fees & custody" },
       { href: "/docs#risk", label: "Risk controls" },
-      { href: "/chain", label: "Chain status" },
-      { href: "/docs#parity", label: "Parity register" },
+      { href: "/chain", label: "Contract & network" },
     ],
   },
 ];
@@ -58,7 +58,11 @@ export function Footer() {
       </div>
       <div className="footer-base">
         <div className="footer-base-inner">
-          <span>Development build · Robinhood Chain testnet 46630 · no real value at risk</span>
+          <span>
+            {IS_MAINNET
+              ? "Robinhood Chain · Trading digital assets carries risk, including loss of the money you deposit. Nothing here is investment advice."
+              : `${NETWORK_LABEL} · test network, tokens have no value`}
+          </span>
           <span>© {new Date().getFullYear()} Covar</span>
         </div>
       </div>

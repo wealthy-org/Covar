@@ -7,10 +7,10 @@ import { useEffect, useRef, useState } from "react";
 import { shortAddr } from "@/lib/format";
 import { actions, useCovar } from "@/lib/store";
 import { WalletDialog } from "./WalletDialog";
-import { CHAINS, EXPECTED_CHAIN_ID, VAULT_ADDRESS, explorerAddress } from "@/lib/chain";
+import { CHAINS, EXPECTED_CHAIN_ID, IS_MAINNET, VAULT_ADDRESS, explorerAddress } from "@/lib/chain";
 
 /**
- * Reference nav (sharpe.ac app pages): contract strip on top, then one full-width
+ * Contract strip on top, then one full-width
  * row — brand, DISCOVER / MY AGENTS / MY MONEY / MORE ▾ — and the actions on the
  * right: "+ NEW AGENT" + "CONNECT WALLET" in the app, a single "LAUNCH APP" on
  * marketing pages. Our extra: a notifications button (the inbox is a brief
@@ -22,16 +22,17 @@ const PRIMARY = [
   { href: "/portfolio", label: "My money", match: ["/portfolio"] },
 ];
 
-const MORE = [
+type MoreItem = { href: string; label: string } | { sep: true };
+const MORE: MoreItem[] = [
   { href: "/economics", label: "Economics" },
   { href: "/treasury", label: "Treasury" },
   { href: "/docs", label: "Docs" },
   { sep: true },
-  { href: "/execution", label: "Execution plane" },
-  { href: "/chain", label: "Chain status" },
+  // the execution plane is an operator view of the paper venue — not shown on mainnet
+  ...(IS_MAINNET ? [] : [{ href: "/execution", label: "Execution plane" }]),
+  { href: "/chain", label: "Contract & network" },
   { href: "/notifications", label: "Notifications" },
-  { href: "/docs#parity", label: "Parity register" },
-] as const;
+];
 
 const MARKETING = new Set(["/", "/economics", "/treasury"]);
 
@@ -138,7 +139,7 @@ export function Nav() {
 
   const walletButton = (extra = "") =>
     walletConnected ? (
-      <button className={`btn btn-primary nav-btn ${extra}`} onClick={() => setWalletOpen(true)} title="Wallet session — click for details">
+      <button className={`btn btn-primary nav-btn ${extra}`} onClick={() => setWalletOpen(true)} title="Your wallet — click for details">
         <span className="mono" style={{ fontSize: 11, letterSpacing: "0.04em" }}>
           {shortAddr(portfolio.wallet, 4)}
         </span>
@@ -161,12 +162,12 @@ export function Nav() {
             <span className="announce-addr">{addr}</span>
           ) : (
             <span className="announce-addr" data-empty>
-              not deployed yet
+              coming soon
             </span>
           )}
           <span className="spacer" />
-          <span className="announce-net" title="Network this build is configured against">
-            <span className="dot" style={{ background: chain.isMainnet ? "#B42318" : "#B4540B" }} />
+          <span className="announce-net" title="Network">
+            <span className="dot" style={{ background: chain.isMainnet ? "#12B76A" : "#B4540B" }} />
             {chain.name} · {EXPECTED_CHAIN_ID}
           </span>
           <button className="announce-btn" onClick={copy} disabled={!addr} aria-label="Copy contract address">

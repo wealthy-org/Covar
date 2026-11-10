@@ -37,6 +37,7 @@ export const SEL = {
   // v2 writes
   allocateToVenue: "0x87cb45ab",
   setLimits: "0xc4590d3f",
+  setMinDeposit: "0x8fcc9cfb",
   setTradingAccount: "0x1fc8aca3",
   // erc20
   approve: "0x095ea7b3",

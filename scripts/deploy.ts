@@ -68,7 +68,40 @@ async function main() {
   }
 
   const Vault = await ethers.getContractFactory("CovarVault");
-  const vault = await Vault.deploy(tokenCfg.address, feeRecipient, operator);
+  const minDep = process.env.VAULT_MIN_DEPOSIT_USDG || (chainId === 4663 ? "1" : "");
+  // a stale checkout once deployed a vault without setMinDeposit (10 Nov) — fail before spending gas
+  if (minDep && !Vault.interface.getFunction("setMinDeposit")) {
+    throw new Error("This checkout's CovarVault has no setMinDeposit — pull the latest code (git log -1) before deploying.");
+  }
+
+  // gas budget: Robinhood Chain charges the actual base fee, but the wallet must
+  // hold gasLimit × maxFeePerGas up front. ethers' default (2 × base) doubles
+  // that; 1.5 × base with no tip keeps a tiny deployer wallet usable.
+  const feeOv: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } = {};
+  const block = await ethers.provider.getBlock("latest");
+  if (block?.baseFeePerGas) {
+    feeOv.maxFeePerGas = (block.baseFeePerGas * 3n) / 2n;
+    feeOv.maxPriorityFeePerGas = 0n;
+    const deployTx = await Vault.getDeployTransaction(tokenCfg.address, feeRecipient, operator);
+    const gas = await ethers.provider.estimateGas({ ...deployTx, from: deployer.address });
+    const need = (gas * 120n / 100n + 200_000n) * feeOv.maxFeePerGas; // deploy (+20%) + setLimits + setMinDeposit
+    console.log(`  gas        deploy ≈${gas} gas · base ${ethers.formatUnits(block.baseFeePerGas, "gwei")} gwei · budget ${ethers.formatEther(need)} ETH`);
+    if (balance < need) {
+      throw new Error(`Deployer has ${ethers.formatEther(balance)} ETH but needs about ${ethers.formatEther(need)} ETH up front. Nothing was sent.`);
+    }
+  }
+
+  const prevFile = path.join(process.cwd(), "deployments", `${chainId}.json`);
+  if (fs.existsSync(prevFile)) {
+    const prev = JSON.parse(fs.readFileSync(prevFile, "utf8"));
+    if (prev?.address) {
+      const keep = path.join(process.cwd(), "deployments", `${chainId}.superseded-${String(prev.address).slice(0, 10)}.json`);
+      fs.copyFileSync(prevFile, keep);
+      console.log(`  previous   ${prev.address} → kept as ${path.basename(keep)}`);
+    }
+  }
+
+  const vault = await Vault.deploy(tokenCfg.address, feeRecipient, operator, feeOv);
   await vault.waitForDeployment();
   const address = await vault.getAddress();
   const receipt = await vault.deploymentTransaction()?.wait();
@@ -97,14 +130,36 @@ async function main() {
   const file = path.join(process.cwd(), "deployments", `${chainId}.json`);
   fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
 
-  const limits = new ethers.Contract(address, ["function maxTotalAssets() view returns (uint256)", "function maxDepositPerTx() view returns (uint256)"], deployer);
+  const limits = new ethers.Contract(
+    address,
+    ["function maxTotalAssets() view returns (uint256)", "function maxDepositPerTx() view returns (uint256)", "function setLimits(uint256,uint256)", "function setMinDeposit(uint256)", "function minDeposit() view returns (uint256)"],
+    deployer,
+  );
+  // first mainnet launch: small caps (owner decision 0.4 — TVL 100 / 25 per deposit), overridable via env
+  const capTvl = process.env.VAULT_MAX_TOTAL_USDG || (chainId === 4663 ? "100" : "");
+  const capTx = process.env.VAULT_MAX_PER_TX_USDG || (chainId === 4663 ? "25" : "");
+  if (capTvl && capTx) {
+    console.log(`\n  setting launch limits: TVL ${capTvl} USDG · per deposit ${capTx} USDG …`);
+    const tx = await limits.setLimits(ethers.parseUnits(capTvl, 6), ethers.parseUnits(capTx, 6), feeOv);
+    await tx.wait();
+    Object.assign(manifest, { launchLimits: { maxTotalAssets: capTvl, maxDepositPerTx: capTx, txHash: tx.hash } });
+    fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
+  }
+  // first mainnet test: 1 USDG minimum so a small wallet can run the full deposit → claim path (owner raises it later in the console)
+  if (minDep) {
+    console.log(`  setting minimum deposit: ${minDep} USDG …`);
+    const tx = await limits.setMinDeposit(ethers.parseUnits(minDep, 6), feeOv);
+    await tx.wait();
+    Object.assign(manifest, { minDeposit: { usdg: minDep, txHash: tx.hash } });
+    fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
+  }
   console.log(`\n  vault      ${address}`);
-  console.log(`  limits     TVL ${ethers.formatUnits(await limits.maxTotalAssets(), 6)} USDG · per deposit ${ethers.formatUnits(await limits.maxDepositPerTx(), 6)} USDG (owner: setLimits)`);
+  console.log(`  limits     TVL ${ethers.formatUnits(await limits.maxTotalAssets(), 6)} USDG · per deposit ${ethers.formatUnits(await limits.maxDepositPerTx(), 6)} USDG · minimum ${ethers.formatUnits(await limits.minDeposit(), 6)} USDG (owner: setLimits / setMinDeposit)`);
   console.log(`  tx         ${manifest.txHash}`);
   console.log(`  manifest   ${file}\n`);
   console.log("Next:");
   console.log(`  1. set NEXT_PUBLIC_COVAR_VAULT_ADDRESS=${address} and NEXT_PUBLIC_CHAIN_ENV=${chainId === 4663 ? "mainnet" : "testnet"}`);
-  console.log("  2. report the first NAV from the operator wallet, then test a 10 USDG deposit");
+  console.log("  2. report the first NAV from the operator wallet, then test a deposit at the minimum");
   console.log(`  3. verify the source: pnpm verify:${chainId === 4663 ? "mainnet" : "testnet"}`);
   console.log("  4. owner sets the trading account (venue deposit address) in /chain/console before any allocation");
   console.log("  5. remove DEPLOYER_KEY (and CONFIRM_MAINNET) from .env — see docs/GO_LIVE_RUNBOOK.md\n");

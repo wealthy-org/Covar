@@ -67,7 +67,7 @@ export default function VaultActivity() {
       <section className="rcard rcard-pad stack gap-8" data-testid="vault-activity">
         <h2 className="rcard-title">On-chain record</h2>
         <span className="small">
-          {feed.status === "loading" ? "Reading the vault's chain logs…" : `On-chain record unavailable (${feed.error ?? "indexer down"}). No figures are shown until the indexer answers.`}
+          {feed.status === "loading" ? "Reading the vault's chain logs…" : "The vault's history couldn't be loaded right now. Figures appear as soon as it's back."}
         </span>
       </section>
     );

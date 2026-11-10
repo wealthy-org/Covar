@@ -55,7 +55,7 @@ export function ChainStatusRow({ compact = false }: { compact?: boolean }) {
   return (
     <div className="panel stack gap-8" style={{ padding: 14 }}>
       <div className="row between gap-8">
-        <span className="small strong">RPC node · Robinhood Chain</span>
+        <span className="small strong">Network node · {chain.name}</span>
         {status?.ok ? (
           <span className={cx("badge", status.chainIdMatches ? "badge-green" : "badge-red")} data-testid="rpc-status">
             <span className="dot dot-live" />
@@ -78,7 +78,7 @@ export function ChainStatusRow({ compact = false }: { compact?: boolean }) {
         <span className="small num">{status?.ok ? status.blockNumber.toLocaleString("en-US") : "—"}</span>
       </div>
       <div className="row between">
-        <span className="tiny">RPC latency</span>
+        <span className="tiny">Response time</span>
         <span className="small num">{status?.ok ? `${status.latencyMs} ms` : "—"}</span>
       </div>
       {!compact && (
@@ -92,8 +92,8 @@ export function ChainStatusRow({ compact = false }: { compact?: boolean }) {
 
       {status?.error && (
         <span className="tiny" style={{ color: "var(--negative)" }}>
-          {status.error} — Robinhood Chain RPC is often blocked by Indonesian ISPs; enable a VPN before treating this as
-          an endpoint failure.
+          Couldn&apos;t reach the network ({status.error}). Some internet providers block this endpoint — try again, or use
+          another connection.
         </span>
       )}
 
@@ -111,19 +111,13 @@ export function OnChainVaultCard({ showLinks = true }: { showLinks?: boolean }) 
     return (
       <div className="panel stack gap-8" style={{ padding: 14 }}>
         <div className="row between">
-          <span className="small strong">Vault settlement</span>
-          <span className="badge badge-amber">Simulated</span>
+          <span className="small strong">Covar vault</span>
+          <span className="badge badge-amber">Coming soon</span>
         </div>
-        <span className="tiny">
-          No vault address is configured, so deposits, NAV and withdrawals on this screen come from the simulated ledger
-          — not from a contract. The contract and its test suite exist in the repository; nothing is deployed.
-        </span>
-        <div className="code" style={{ fontSize: 11 }}>
-          {`NEXT_PUBLIC_COVAR_VAULT_ADDRESS=0x…\nNEXT_PUBLIC_RH_CHAIN_ID=46630`}
-        </div>
+        <span className="tiny">The vault isn&apos;t open yet. Deposits become available here as soon as it is live.</span>
         {showLinks && (
           <Link href="/chain" className="link-primary small">
-            Chain &amp; deployment status →
+            Contract &amp; network →
           </Link>
         )}
       </div>

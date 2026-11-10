@@ -9,12 +9,13 @@ import { Sparkline } from "@/components/Chart";
 import { cx, pctSigned, usd } from "@/lib/format";
 import type { Agent } from "@/lib/types";
 import { VAULT_AGENT_ID } from "@/lib/vaultAgent";
+import { SHOW_EXAMPLES } from "@/lib/chain";
 
 /**
  * Discover — one institutional-terminal table for every agent, four views:
  *   ALL · LIVE VAULTS · AGENT ARENA · BACKTESTS, plus a Market filter and Sort by.
  *
- * Ranking rule from the brief: records of different provenance are never ranked
+ * Ranking rule: records of different provenance are never ranked
  * against each other. The All view therefore keeps three groups in a fixed order
  * (live vaults → agent arena → backtests); Sort by only reorders rows inside a
  * group. The deployed vault (chain data, package 3.6) is always pinned first and
@@ -60,10 +61,12 @@ const ageOf = (a: Agent) => a.liveAgeDays || (a.provenance === "backtest" ? a.cu
 const GROUPS: Record<GroupId, { title: string; note: string }> = {
   vaults: {
     title: "Live vaults · real money",
-    note: "Open vaults with a real-money record. The deployed vault is pinned first; other rows are seeded demo data.",
+    note: SHOW_EXAMPLES
+      ? "Open vaults with a real-money record. The deployed vault is pinned first; other rows are examples."
+      : "Open vaults on Robinhood Chain. Every figure is read from the vault contract.",
   },
   arena: {
-    title: "Agent arena · pretend money or test funds",
+    title: "Agent arena · practice money",
     note: "Still proving themselves. Ranked only against each other. Nothing here takes deposits.",
   },
   backtests: {
@@ -74,8 +77,8 @@ const GROUPS: Record<GroupId, { title: string; note: string }> = {
 
 const SUBTITLE: Record<Tab, string> = {
   all: "Every agent on Covar in one table, grouped by where its record comes from. Groups are never ranked against each other.",
-  vaults: "Agents with a real-money record and an open vault. Index rows in this build are seeded demo data.",
-  arena: "Agents still proving themselves with pretend money or test funds. Nothing here takes deposits.",
+  vaults: "Agents with a real-money record and an open vault.",
+  arena: "Agents still proving themselves with practice money. Nothing here takes deposits.",
   backtests: "History replays of strategies. Useful to judge an idea, never a substitute for a live record.",
 };
 
@@ -86,7 +89,7 @@ function provenanceOf(a: Agent): Prov {
   switch (a.provenance) {
     case "live":
     case "vault":
-      return { key: "live", label: "live", cls: "pill pill-ink", tip: "Real-money record from the agent's own trading (demo data in this build)" };
+      return { key: "live", label: "live", cls: "pill pill-ink", tip: SHOW_EXAMPLES ? "Real-money record (example row)" : "Real-money record from the agent's own trading" };
     case "testnet":
       return { key: "testnet", label: "testnet", cls: "pill pill-amber", tip: "Traded on a test exchange with test funds — no real value" };
     case "practice":
@@ -260,7 +263,18 @@ export default function ExplorePage() {
                   <tr>
                     <td colSpan={COLS} style={{ textAlign: "center", padding: 28 }}>
                       <span className="small">
-                        {market === "all" ? "Nothing here yet." : `No ${g === "vaults" ? "live vaults" : g === "arena" ? "arena agents" : "backtests"} on ${market}.`}
+                        {market === "all" ? (
+                          g === "vaults" ? (
+                            "No open vaults yet."
+                          ) : (
+                            <>
+                              Nothing here yet.{" "}
+                              <Link href="/studio?new=1" className="link-primary">
+                                Build an agent →
+                              </Link>
+                            </>
+                          )
+                        ) : `No ${g === "vaults" ? "live vaults" : g === "arena" ? "arena agents" : "backtests"} on ${market}.`}
                       </span>
                     </td>
                   </tr>

@@ -259,7 +259,6 @@ export function RulesEditor({
           <span className="h4" style={{ fontSize: 14 }}>
             Copilot
           </span>
-          <span className="tiny">reference-equivalent configuration</span>
         </div>
         <div className="row gap-6 wrap">
           {(["advisory", "veto", "off"] as const).map((m) => (

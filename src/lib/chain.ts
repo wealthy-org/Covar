@@ -60,6 +60,14 @@ export const EXPECTED_CHAIN_ID: ChainId =
 
 export const VAULT_ADDRESS: string | null = process.env.NEXT_PUBLIC_COVAR_VAULT_ADDRESS || null;
 
+/** The production network: real money, no sample data, no developer copy. */
+export const IS_MAINNET = EXPECTED_CHAIN_ID === 4663;
+/** Example agents, sample portfolio and illustrative figures: off on mainnet (override: NEXT_PUBLIC_SHOW_EXAMPLES=1|0). */
+export const SHOW_EXAMPLES =
+  process.env.NEXT_PUBLIC_SHOW_EXAMPLES === "1" ? true : process.env.NEXT_PUBLIC_SHOW_EXAMPLES === "0" ? false : !IS_MAINNET;
+/** e.g. "Robinhood Chain · 4663" */
+export const NETWORK_LABEL = `${CHAINS[EXPECTED_CHAIN_ID]?.name ?? "Robinhood Chain"} · ${EXPECTED_CHAIN_ID}`;
+
 export const rpcUrl = (chain: ChainId = EXPECTED_CHAIN_ID) => CHAINS[chain].rpc;
 export const explorerAddress = (address: string, chain: ChainId = EXPECTED_CHAIN_ID) =>
   `${CHAINS[chain].explorer}/address/${address}`;

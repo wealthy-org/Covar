@@ -258,6 +258,27 @@ describe("CovarVault", () => {
       await expect(vault.setLimits(USDG(50), USDG(100))).to.be.revertedWith("tvl cap < deposit cap");
       await expect(vault.setLimits(USDG(5000), USDG(500))).to.emit(vault, "LimitsChanged").withArgs(USDG(5000), USDG(500));
     });
+
+    it("lets only the owner lower the minimum deposit; a 1 USDG deposit then settles and claims end to end", async () => {
+      const { vault, token, operator, alice } = await deploy({ launchLimits: true });
+      await expect(vault.connect(operator).setMinDeposit(USDG(1))).to.be.revertedWithCustomError(vault, "NotOwner");
+      await expect(vault.setMinDeposit(0)).to.be.revertedWith("min = 0");
+      await expect(vault.setMinDeposit(USDG(101))).to.be.revertedWith("min > deposit cap");
+      await vault.connect(operator).reportNav(0);
+      await expect(vault.connect(alice).deposit(USDG(1))).to.be.revertedWithCustomError(vault, "BelowMinimum");
+      await expect(vault.setMinDeposit(USDG(1))).to.emit(vault, "MinDepositChanged").withArgs(USDG(1));
+      // 1 USDG − (1% + 0.10) = 0.89 net
+      await expect(vault.connect(alice).deposit(USDG(1))).to.emit(vault, "Deposit").withArgs(alice.address, USDG(1), USDG(0.11), USDG(0.89));
+      // a deposit the fee would swallow is still refused
+      await expect(vault.connect(alice).deposit(USDG(0.1))).to.be.revertedWithCustomError(vault, "BelowMinimum");
+      const before = await token.balanceOf(alice.address);
+      await vault.connect(alice).requestWithdrawal(USDG(0.89));
+      await vault.connect(operator).markPositionsClosed(alice.address);
+      const net = USDG(0.89) - (USDG(0.89) * 100n) / 10_000n - USDG(0.1); // 0.7811 after the 1% + 0.10 withdrawal fee
+      await vault.connect(operator).settleWithdrawal(alice.address, USDG(0.89));
+      await vault.connect(alice).claim();
+      expect((await token.balanceOf(alice.address)) - before).to.equal(net);
+    });
   });
 
   // ------------------------------------------------------ v2: trading capital path

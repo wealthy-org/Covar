@@ -1,5 +1,6 @@
 import type { Agent, Creator, CovarState, Decision, VersionEntry } from "./types";
 import { hashSeed, mulberry32 } from "./format";
+import { NETWORK_LABEL, SHOW_EXAMPLES } from "./chain";
 
 const iso = (daysAgo: number, h = 0) =>
   new Date(Date.now() - daysAgo * 864e5 - h * 36e5).toISOString();
@@ -470,7 +471,45 @@ export const seedPortfolio: CovarState["portfolio"] = {
 
 export const emptyStrategy = null;
 
+/** ids of the built-in example records — stripped from saved sessions when examples are off */
+export const EXAMPLE_AGENT_IDS = new Set(seedAgents.map((a) => a.id));
+export const EXAMPLE_LEDGER_IDS = new Set(seedPortfolio.ledger.map((l) => l.id));
+
+/** Remove example agents, holdings, ledger rows and practice runs from a saved session (mainnet). */
+export function stripExamples(s: CovarState): CovarState {
+  if (SHOW_EXAMPLES || !s) return s;
+  const practice = Object.fromEntries(Object.entries(s.practice ?? {}).filter(([id]) => !EXAMPLE_AGENT_IDS.has(id)));
+  const p = s.portfolio ?? seedPortfolio;
+  return {
+    ...s,
+    agents: (s.agents ?? []).filter((a) => !EXAMPLE_AGENT_IDS.has(a.id)),
+    creators: (s.creators ?? []).filter((c) => !creators.some((x) => x.id === c.id)),
+    practice,
+    portfolio: {
+      ...p,
+      wallet: p.wallet === seedPortfolio.wallet ? "" : p.wallet,
+      chain: NETWORK_LABEL,
+      cashUsd: p.cashUsd === seedPortfolio.cashUsd ? 0 : p.cashUsd,
+      creditUsd: p.creditUsd === seedPortfolio.creditUsd ? 0 : p.creditUsd,
+      holdings: (p.holdings ?? []).filter((h) => !EXAMPLE_AGENT_IDS.has(h.agentId)),
+      ledger: (p.ledger ?? []).filter((l) => !EXAMPLE_LEDGER_IDS.has(l.id) && !(l.agentId && EXAMPLE_AGENT_IDS.has(l.agentId))),
+    },
+  };
+}
+
 export function seedState(): CovarState {
+  if (!SHOW_EXAMPLES) {
+    return {
+      walletConnected: false,
+      notifications: [],
+      agents: [],
+      creators: [],
+      portfolio: { wallet: "", chain: NETWORK_LABEL, cashUsd: 0, creditUsd: 0, holdings: [], ledger: [] },
+      practice: {},
+      drafts: [],
+      liveStrategy: {},
+    };
+  }
   return {
     walletConnected: false,
     notifications: [],

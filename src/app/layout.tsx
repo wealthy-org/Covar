@@ -9,7 +9,7 @@ import { Reveal } from "@/components/Reveal";
 export const metadata: Metadata = {
   title: "Covar — strategy agents with published rules",
   description:
-    "Covar turns a conversation into a validated trading strategy, backtests it, runs it in practice, and lets investors fund a versioned vault. Testnet build on Robinhood Chain.",
+    "Covar turns a conversation into a validated trading strategy, backtests it, runs it in practice, and lets investors fund a versioned vault. Vaults on Robinhood Chain.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -7,7 +7,7 @@ import { Modal } from "./ui";
 import { shortAddr, usd } from "@/lib/format";
 import { currentWalletAccount, signInWithEthereum, signOut, useAuth } from "@/lib/session";
 import { formatUnits, injected, readAccount } from "@/lib/vaultTx";
-import { CHAINS, EXPECTED_CHAIN_ID, VAULT_ADDRESS, readVault } from "@/lib/chain";
+import { CHAINS, EXPECTED_CHAIN_ID, IS_MAINNET, NETWORK_LABEL, VAULT_ADDRESS, readVault } from "@/lib/chain";
 import { useCredits } from "@/lib/creditsClient";
 
 export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -68,7 +68,7 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Connected wallet" subtitle={isEvm ? "Your browser wallet" : "Development session wallet"}>
+    <Modal open={open} onClose={onClose} title="Connected wallet" subtitle={isEvm ? "Your browser wallet" : "Practice wallet"}>
       <div className="stack gap-16">
         {isEvm ? (
           <div className="notice">
@@ -169,9 +169,9 @@ export function WalletDialog({ open, onClose }: { open: boolean; onClose: () => 
           <div className="row between">
             <div className="stack" style={{ gap: 2 }}>
               <span className="tiny">Network</span>
-              <span className="small">{portfolio.chain}</span>
+              <span className="small">{NETWORK_LABEL}</span>
             </div>
-            <span className="badge badge-amber">Testnet</span>
+            <span className={`badge ${IS_MAINNET ? "badge-green" : "badge-amber"}`}>{IS_MAINNET ? "Mainnet" : "Testnet"}</span>
           </div>
         </div>
 

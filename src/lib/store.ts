@@ -6,7 +6,7 @@ import type { Agent, AppNotification, CovarState, Creator, Holding, LedgerRow, N
 import { vaultFeed } from "./vaultAgent";
 import { getWalletProvider } from "./wallet";
 import { explainError } from "./vaultTx";
-import { seedAgents, seedState } from "./seed";
+import { seedAgents, seedState, stripExamples } from "./seed";
 import { upgradeAgents } from "./versions";
 import { PLATFORM_LIMITS } from "./strategy";
 
@@ -103,7 +103,7 @@ if (typeof window !== "undefined") {
 
 /** records saved before newer fields existed are upgraded on read, never on the server */
 function upgrade(s: CovarState): CovarState {
-  return s?.agents?.length ? { ...s, agents: upgradeAgents(s.agents, seedAgents) } : s;
+  return stripExamples(s?.agents?.length ? { ...s, agents: upgradeAgents(s.agents, seedAgents) } : s);
 }
 
 async function hydrateFromDb() {
@@ -177,7 +177,7 @@ export function hydrate() {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as CovarState;
-      if (parsed?.agents?.length) {
+      if (parsed && Array.isArray(parsed.agents)) {
         state = upgrade(parsed);
         emit();
       }

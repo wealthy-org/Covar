@@ -9,12 +9,6 @@ import { VAULT_ADDRESS, readVault } from "@/lib/chain";
 const CAP = PLATFORM_LIMITS.feeCapPct;
 import { FeeSankey } from "@/components/FeeSankey";
 
-const PENDING = [
-  { name: "Protocol token", status: "Pending decision", detail: "Name, ticker and identifiers are not approved. Nothing is deployed or claimable." },
-  { name: "Agent tokens", status: "Pending decision", detail: "Reference describes agent-token relationships; launch mechanics are not implemented in this parity release." },
-  { name: "Buyback & burn", status: "Not active", detail: "Treasury page shows fee accounting only. No burn has been executed; no claim of a burn schedule is made here." },
-  { name: "Staking", status: "Not active", detail: "No staking contract exists. The stake panel above is disabled and earns nothing." },
-];
 
 function KV({ k, v, tone }: { k: string; v: React.ReactNode; tone?: string }) {
   return (
@@ -72,52 +66,27 @@ export default function EconomicsPage() {
           Where every fee <span style={{ color: "var(--primary)" }}>goes.</span>
         </h1>
         <p className="page-sub">
-          A deposit/withdrawal fee, a creator-selected fee on winning-trade profit, and an 80/20 creator/platform split —
-          reference behaviour, preserved. A high-water-mark change is tracked in the backlog, not implemented silently.
+          A deposit and withdrawal fee charged by the vault contract, a creator-selected fee on winning-trade profit, and an
+          80/20 creator/platform split. Every fee actually received is listed on the Treasury page.
         </p>
         <Link href="/treasury" className="accent-link" style={{ marginTop: 6 }}>
           See the accounting: Treasury →
         </Link>
       </div>
 
-      <div className="econ-grid">
-        <section className="rcard rcard-pad stack gap-16">
-          <div className="row between gap-12 wrap">
-            <h2 className="rcard-title">Fee flows</h2>
-            <span className="tagbox">band width = rule share · no live volume</span>
-          </div>
-          <FeeSankey />
-        </section>
-
-        <section className="rcard rcard-pad stack gap-14">
-          <div className="row between gap-8">
-            <h2 className="rcard-title">Stake</h2>
-            <span className="tagbox tagbox-accent">Coming soon</span>
-          </div>
-          <span className="small">
-            No staking contract exists and no token is approved. This panel is a placeholder for the reference layout — it
-            cannot take or earn anything.
-          </span>
-          <label className="field">
-            <span className="stat-label">Amount</span>
-            <input className="input" placeholder="0.00" disabled aria-label="Stake amount (disabled)" />
-          </label>
-          <div>
-            <KV k="Your stake" v="—" />
-            <KV k="Share of treasury" v="—" />
-            <KV k="Rewards" v="none" />
-          </div>
-          <button className="btn-ink" disabled style={{ height: 40 }}>
-            Stake — not available
-          </button>
-        </section>
-      </div>
+      <section className="rcard rcard-pad stack gap-16">
+        <div className="row between gap-12 wrap">
+          <h2 className="rcard-title">Fee flows</h2>
+          <span className="tagbox">band width = share of each fee</span>
+        </div>
+        <FeeSankey />
+      </section>
 
       <div className="joined-stats" data-cols="3">
         <div>
           <span className="stat-label">Deposit / withdrawal fee</span>
           <span className="js-v">1% + 0.10</span>
-          <span className="tiny">USDG · on capital flows, not on profit. Creator&rsquo;s own funds are an open parameter.</span>
+          <span className="tiny">USDG · on money in and out, not on profit. Charged by the vault contract.</span>
         </div>
         <div>
           <span className="stat-label">Creator fee ceiling</span>
@@ -260,7 +229,7 @@ export default function EconomicsPage() {
 
           <span className="mono-note">
             Deposit and withdrawal fees are charged by the vault contract on the transfer itself and go straight to the fee
-            recipient — every one is listed on the Treasury page. The creator fee is a simulation: per-trade settlement is not live yet.
+            recipient — every one is listed on the Treasury page. Creator-fee figures are an estimate of what a winning trade would pay.
           </span>
         </section>
 
@@ -299,42 +268,8 @@ export default function EconomicsPage() {
         </div>
       </div>
 
-      <section className="rcard">
-        <div className="rcard-head" style={{ paddingBottom: 14 }}>
-          <h2 className="rcard-title">Token &amp; staking features</h2>
-          <span className="pill pill-amber">not implemented in this release</span>
-        </div>
-        <div style={{ overflowX: "auto", borderTop: "1px solid var(--border)" }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Feature</th>
-                <th>Status</th>
-                <th>What that means</th>
-              </tr>
-            </thead>
-            <tbody>
-              {PENDING.map((p) => (
-                <tr key={p.name}>
-                  <td className="strong nowrap" style={{ color: "var(--ink)" }}>
-                    {p.name}
-                  </td>
-                  <td>
-                    <span className="pill">{p.status}</span>
-                  </td>
-                  <td className="small" style={{ minWidth: 260 }}>
-                    {p.detail}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
       <p className="mono-note" style={{ maxWidth: 860 }}>
-        A diagram is not a completed settlement system. Nothing on this page mints, burns, stakes or distributes value; the
-        stake panel is disabled and says so, and the fee flows show rules, not volumes.
+        The fee flows show the rules, not volumes. Nothing on this page moves money.
       </p>
     </div>
   );

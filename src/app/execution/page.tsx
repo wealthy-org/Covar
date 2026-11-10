@@ -1,13 +1,17 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ExecutionPlane } from "@/components/ExecutionPlane";
+import { IS_MAINNET } from "@/lib/chain";
 
 export const metadata = {
   title: "Execution plane · Covar",
   description:
-    "Order path, risk gate, signer, venue boundary and restart reconciliation for Covar agents. Paper venue in this build.",
+    "Order path, risk gate, signer, venue boundary and restart reconciliation for Covar agents. ",
 };
 
 export default function ExecutionPage() {
+  // operator view of the paper venue — not part of the mainnet product
+  if (IS_MAINNET) notFound();
   return (
     <div className="wrap-md page-pad stack gap-20">
       <div className="row between wrap gap-16">

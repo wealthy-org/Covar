@@ -3,19 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Fragment, useState } from "react";
+import { IS_MAINNET } from "@/lib/chain";
 
 /**
- * Landing — mirrors the reference page section-for-section (captured from
- * sharpe.ac + the owner's screen recording, 6 Nov 2026):
+ * Landing:
  *
  *   announce strip → transparent nav → textured hero with floating candles and
  *   the assistant card → "built for" footnote → How it works (Build / Follow) →
  *   Why (rules → copilot → risk chain, four proof cards, market chips) →
  *   AI layer (three cards) → FAQ (two columns) → centred closing CTA.
  *
- * Layout, spacing and interaction follow the reference; the palette is Covar
- * cobalt and every sentence is true of this build (see PARITY_REGISTER §deviations
- * for the copy that differs and why).
+ * Palette: Covar cobalt. Every sentence must stay true of the deployed product.
  */
 
 /* ------------------------------------------------------------------ icons */
@@ -55,7 +53,7 @@ const SETUP: [string, string][] = [
 
 const STEPS = [
   { n: 1, title: "Describe", sub: "Plain words, no code", img: "/landing/step-describe.png", w: 96, h: 95 },
-  { n: 2, title: "Test", sub: "Seeded history, explicit costs", img: "/landing/step-test.png", w: 52, h: 96 },
+  { n: 2, title: "Test", sub: "Real history, explicit costs", img: "/landing/step-test.png", w: 52, h: 96 },
   { n: 3, title: "Practice", sub: "Pretend money, clearly labelled", img: "/landing/step-practice.png", w: 81, h: 96 },
 ];
 
@@ -74,7 +72,7 @@ const CHAIN: [IconName, string, string][] = [
 const PROOF: [IconName, string, string][] = [
   ["scale", "The AI has to prove it helps", "Every agent runs a rules-only twin side by side, so you can see whether the AI actually adds return."],
   ["news", "It reads the setup like you do", "Before a trade, the Copilot weighs what your rules found, then takes it, skips it or sizes it down — never past your caps."],
-  ["db", "Backtests that show their costs", "Spread, slippage and funding are charged on every fill and printed with every run. Same strategy, same seed, same result."],
+  ["db", "Backtests that show their costs", "Spread, slippage and funding are charged on every fill and printed with every run. Same strategy, same data, same result."],
   ["key", "Nobody can run off with the keys", "Trading keys live only in Covar's signer. Not with the AI, not with the creator, not in the browser."],
 ];
 
@@ -89,7 +87,9 @@ const AI_LAYER: [IconName, string, string][] = [
 const FAQ = [
   {
     q: "Is it live?",
-    a: "The Studio is in beta: build, test and practice agents now. Nothing on this build moves real money yet — the vault contracts are tested but not deployed, and execution runs against a paper venue. Every screen says which kind of money it is showing.",
+    a: IS_MAINNET
+      ? "Yes. The Covar vault runs on Robinhood Chain with real USDG, starting with small deposit limits while it builds a track record. Building, backtesting and practice are free. Every screen says which kind of money it is showing: real, practice or a backtest."
+      : "This site runs on the Robinhood Chain test network: tokens have no value. Build, backtest and practice agents freely; the vault flow works end to end with test USDG.",
   },
   {
     q: "What does it cost?",

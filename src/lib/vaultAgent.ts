@@ -118,7 +118,9 @@ export function vaultAgentFrom(s: VaultSummary, now = Date.now()): { agent: Agen
     },
     strategySummary:
       process.env.NEXT_PUBLIC_COVAR_VAULT_STRATEGY ||
-      "Run by the Covar operator: capital above the idle reserve is allocated to the trading account on Lighter, trades pass the independent risk service, and NAV is the venue equity reported on-chain. Withdrawals close the investor's share of positions before settlement.",
+      (s.live.tradingAccount
+        ? "Run by the Covar operator: capital above the 20% cash reserve is allocated to the owner-set trading account on Lighter, every trade passes the independent risk service, and the vault value (NAV) is the venue equity reported on-chain. Withdrawals close the investor's share of positions before settlement."
+        : "Run by the Covar operator, which reports the vault value (NAV) on-chain and settles withdrawals. Trading is not enabled yet: no trading account is set, so all money stays in the vault as USDG. When it is enabled, only capital above a 20% cash reserve can move, and only to the owner-set trading account on Lighter."),
     riskSummary: [
       cap !== null ? `cap ${cap.toLocaleString("en-US")} USDG total` : null,
       perTx !== null ? `${perTx.toLocaleString("en-US")} USDG per deposit` : null,
@@ -128,7 +130,7 @@ export function vaultAgentFrom(s: VaultSummary, now = Date.now()): { agent: Agen
       .filter(Boolean)
       .join(" · "),
     disclosure: mainnet
-      ? "Real money vault. Value is kept small and controlled during launch; the admin is a single key (documented, accepted risk). Losses are possible."
+      ? "Real-money vault. Deposits are capped while it builds a track record. The vault has a single owner key (no multisig). Losses are possible."
       : s.chainId === 31337
         ? "Local test chain. Tokens here have no value."
         : "Test network vault: test USDG with no real value. Figures are real chain data from the testnet.",
