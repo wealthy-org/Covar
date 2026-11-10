@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { actions, useCovar } from "@/lib/store";
 import { cx, dateTime, shortAddr, usd } from "@/lib/format";
-import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
+import { Empty, Modal, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
 import { OnChainVaultCard } from "@/components/ChainPanel";
 import { InvestPanel } from "@/components/InvestPanel";
 import { WalletGate } from "@/components/WalletGate";
@@ -21,11 +21,18 @@ interface ChainPosition {
   shares: number;
   nav: number;
   request: { state: RequestState; shares: number; settledUsd: number };
+  navAgeMin: number | null;
 }
 
 /** Real wallet + Covar vault position from the chain (browser-wallet mode only). */
-function useOnChainBalances(wallet: string, enabled: boolean) {
+function useOnChainBalances(wallet: string, enabled: boolean, tick = 0) {
   const [v, setV] = useState<ChainPosition | null>(null);
+  const [poll, setPoll] = useState(0);
+  useEffect(() => {
+    // re-read every 20 s so the operator's settlement shows up without a reload
+    const t = setInterval(() => setPoll((n) => n + 1), 20_000);
+    return () => clearInterval(t);
+  }, []);
   useEffect(() => {
     if (!enabled || !VAULT_ADDRESS || !wallet?.startsWith("0x")) return;
     let cancelled = false;
@@ -41,28 +48,29 @@ function useOnChainBalances(wallet: string, enabled: boolean) {
             shares: toNum(a.shares),
             nav: toNum(a.navWad, 18),
             request: { state: a.request.state, shares: toNum(a.request.shares), settledUsd: toNum(a.request.settledAssets) },
+            navAgeMin: vault.lastNavUpdate === 0 ? null : Math.max(1, Math.round(vault.navAgeSeconds / 60)),
           });
       } catch {
-        if (!cancelled) setV(null);
+        /* keep the last good reading; a transient RPC error must not blank the card */
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [wallet, enabled]);
+  }, [wallet, enabled, tick, poll]);
   return v;
 }
 
 const REQUEST_STATE_PILL: Partial<Record<RequestState, string>> = {
-  ClosingPositions: "Requested · closing positions",
-  Settling: "Settling",
+  ClosingPositions: "Withdrawal requested",
+  Settling: "Positions closed · settling",
   Claimable: "Settled · claim ready",
 };
 
 const REQUEST_TEXT: Partial<Record<RequestState, string>> = {
   ClosingPositions: "the operator is closing your share of open positions",
   Settling: "positions are closed; the operator is settling it at a fresh price",
-  Claimable: "it is ready — claim it in the Invest card",
+  Claimable: "it is settled — press Claim USDG on the Vault holdings card",
 };
 
 export default function PortfolioPage() {
@@ -95,7 +103,9 @@ function PortfolioInner() {
   });
 
   const isEvm = (walletProviderId ?? getWalletProvider().id) === "evm" && !!VAULT_ADDRESS;
-  const chainBal = useOnChainBalances(portfolio.wallet, isEvm);
+  const [chainTick, setChainTick] = useState(0);
+  const chainBal = useOnChainBalances(portfolio.wallet, isEvm, chainTick);
+  const [investOpen, setInvestOpen] = useState<null | "deposit" | "withdraw">(null);
   const practiceVault = rows.reduce((a, b) => a + b.value, 0);
   // Browser-wallet mode: the headline numbers are the real on-chain ones; practice holdings stay in their labelled rows.
   const vaultValue = isEvm ? (chainBal?.vault ?? 0) : practiceVault;
@@ -183,7 +193,69 @@ function PortfolioInner() {
 
       {/* ------------------------------- actions ------------------------------- */}
       <div className="grid-2 portfolio-actions" style={{ alignItems: "stretch" }}>
-        <InvestPanel />
+        {isEvm ? (
+          <div className="rcard rcard-pad stack gap-14" data-testid="vault-holdings-card">
+            <div className="row between gap-8">
+              <span className="stat-label">Vault holdings · Covar vault</span>
+              <span className="badge badge-green">On-chain</span>
+            </div>
+            <div className="stack" style={{ gap: 2 }}>
+              <span className="tiny">NAV per share</span>
+              <span className="mono-num" style={{ fontSize: 30, color: "var(--ink)" }} data-testid="nav-per-share">
+                {chainBal ? `${chainBal.nav.toFixed(4)} USDG` : "…"}
+              </span>
+              <span className="tiny">
+                {chainBal?.navAgeMin ? `reported on-chain ${chainBal.navAgeMin} min ago` : "share price read from the vault contract"}
+              </span>
+            </div>
+            <div>
+              <div className="kv">
+                <span className="kv-k">Your shares</span>
+                <span className="kv-v" data-testid="holding-shares">{chainBal ? chainBal.shares.toFixed(4) : "…"}</span>
+              </div>
+              <div className="kv">
+                <span className="kv-k">Value at NAV</span>
+                <span className="kv-v">{chainBal ? `${chainBal.vault.toFixed(2)} USDG` : "…"}</span>
+              </div>
+              <div className="kv">
+                <span className="kv-k">Wallet USDG</span>
+                <span className="kv-v">{chainBal ? chainBal.usdg.toFixed(2) : "…"}</span>
+              </div>
+              {chainBal && REQUEST_STATE_PILL[chainBal.request.state] && (
+                <div className="kv">
+                  <span className="kv-k">Withdrawal</span>
+                  <span className={chainBal.request.state === "Claimable" ? "badge badge-green" : "badge badge-amber"}>
+                    {REQUEST_STATE_PILL[chainBal.request.state]}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="grid-2" style={{ gap: 8, marginTop: "auto" }}>
+              <button className="btn-ink" style={{ height: 40 }} data-testid="open-invest" onClick={() => setInvestOpen("deposit")}>
+                Invest
+              </button>
+              <button
+                className="btn-out"
+                style={{ height: 40, justifyContent: "center" }}
+                data-testid="open-withdraw"
+                onClick={() => setInvestOpen("withdraw")}
+              >
+                {chainBal?.request.state === "Claimable" ? "Claim USDG" : "Withdraw"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <InvestPanel />
+        )}
+        <Modal
+          open={investOpen !== null}
+          onClose={() => setInvestOpen(null)}
+          title="Invest · Covar vault"
+          subtitle="Signed in your own wallet · every number read from the contract"
+          className="modal-invest"
+        >
+          <InvestPanel compact initialTab={investOpen ?? "deposit"} onChange={() => setChainTick((n) => n + 1)} />
+        </Modal>
         <div id="credits" className="portfolio-actions-cell">
           <CreditsPanel />
         </div>
@@ -213,7 +285,7 @@ function PortfolioInner() {
             title="No vault positions yet"
             body={
               isEvm
-                ? "You don't hold any vault shares. Deposit USDG in the Invest card above — shares are minted at the vault price after the 1% + 0.10 USDG fee."
+                ? "You don't hold any vault shares. Press Invest on the Vault holdings card above — shares are minted at the vault price after the 1% + 0.10 USDG fee."
                 : "You hold no shares yet. Deposits mint shares at the vault NAV after the 1% + 0.10 USDG fee."
             }
             action={isEvm ? undefined : <Link href="/explore" className="btn btn-primary">Browse agents</Link>}
@@ -254,7 +326,9 @@ function PortfolioInner() {
                           {REQUEST_STATE_PILL[chainBal.request.state]}
                         </span>
                       ) : (
-                        <span className="small">Use the Invest card</span>
+                        <button className="link-primary small" style={{ background: "none", border: 0, padding: 0, cursor: "pointer" }} onClick={() => setInvestOpen("withdraw")}>
+                          Withdraw
+                        </button>
                       )}
                     </td>
                   </tr>

@@ -32,9 +32,9 @@ import { actions } from "@/lib/store";
 import { useAuth } from "@/lib/session";
 
 const STEP_LABEL: Record<string, string> = {
-  ClosingPositions: "Requested · Closing positions",
-  Settling: "Positions closed · Settling",
-  Claimable: "Settled · Ready to claim",
+  ClosingPositions: "Withdrawal requested",
+  Settling: "Positions closed · settling",
+  Claimable: "Settled",
   Claimed: "Claimed",
 };
 
@@ -50,13 +50,26 @@ const WD_CURRENT: Record<string, number> = { ClosingPositions: 1, Settling: 2, C
 
 interface Receipt {
   label: string;
+  /** for a claim: the settled amount the vault owed, to show it arrived in full */
+  expected?: bigint;
   hash: string;
   block: number;
   shares: [bigint, bigint];
   usdg: [bigint, bigint];
 }
 
-export function InvestPanel({ agentId, compact = false }: { agentId?: string; compact?: boolean }) {
+export function InvestPanel({
+  agentId,
+  compact = false,
+  initialTab = "deposit",
+  onChange,
+}: {
+  agentId?: string;
+  compact?: boolean;
+  initialTab?: "deposit" | "withdraw";
+  /** called after every confirmed transaction, so a parent can re-read balances */
+  onChange?: () => void;
+}) {
   const chain = EXPECTED_CHAIN_ID;
   const [vault, setVault] = useState<VaultState | null>(null);
   const [v2, setV2] = useState<VaultV2 | null>(null);
@@ -66,7 +79,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
   const [readErr, setReadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ tone: "ok" | "err" | "info"; text: string; hash?: string } | null>(null);
-  const [tab, setTab] = useState<"deposit" | "withdraw">("deposit");
+  const [tab, setTab] = useState<"deposit" | "withdraw">(initialTab);
   const [amount, setAmount] = useState("");
   const [shares, setShares] = useState("");
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -222,7 +235,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
 
   /* ---------------------------------------------------------------- tx runner */
   /** Sends one transaction; resolves true once it is confirmed with status 1. */
-  async function run(label: string, to: string, data: string, after?: (hash: string) => void, opts: { receipt?: boolean } = {}): Promise<boolean> {
+  async function run(label: string, to: string, data: string, after?: (hash: string) => void, opts: { receipt?: boolean; expected?: bigint } = {}): Promise<boolean> {
     if (!account) return false;
     setBusy(label);
     setMsg({ tone: "info", text: `${label}: confirm in your wallet…` });
@@ -238,12 +251,13 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
         // read the wallet again so the receipt shows real before → after balances
         try {
           const now = await readAccount(VAULT_ADDRESS, vault.asset, account, chain);
-          setReceipt({ label, hash, block: Number(r.blockNumber), shares: [before.shares, now.shares], usdg: [before.usdgBalance, now.usdgBalance] });
+          setReceipt({ label, hash, block: Number(r.blockNumber), shares: [before.shares, now.shares], usdg: [before.usdgBalance, now.usdgBalance], expected: opts.expected });
         } catch {
           /* the balances refresh below anyway */
         }
       }
       await refresh();
+      onChange?.();
       setTimeout(() => void syncActivity(), 6_000); // once the indexer has the block
       return true;
     } catch (e) {
@@ -403,7 +417,7 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
                       SEL.claim,
                       (hash) =>
                         actions.recordChainTx({ kind: "withdrawal_claim", label: `Claimed ${fmt(req.settledAssets)} ${sym}`, amountUsd: Number(formatUnits(req.settledAssets, dec, 6).replace(/,/g, "")), txHash: hash, agentId }),
-                      { receipt: true },
+                      { receipt: true, expected: req.settledAssets },
                     )
                   }
                 >
@@ -545,7 +559,16 @@ export function InvestPanel({ agentId, compact = false }: { agentId?: string; co
               {receipt.hash.slice(0, 10)}…{receipt.hash.slice(-6)} ↗
             </a>
           </div>
-          <span className="tiny">Block {receipt.block} · recorded in your ledger below.</span>
+          {receipt.expected !== undefined && (
+            <div className="kv" data-testid="claim-full">
+              <span className="kv-k">Settled amount</span>
+              <span className="kv-v" style={{ color: receipt.usdg[1] - receipt.usdg[0] === receipt.expected ? "var(--positive)" : "var(--negative)" }}>
+                {fmt(receipt.expected)} {sym} ·{" "}
+                {receipt.usdg[1] - receipt.usdg[0] === receipt.expected ? "received in full ✓" : `received ${fmt(receipt.usdg[1] - receipt.usdg[0])}`}
+              </span>
+            </div>
+          )}
+          <span className="tiny">Block {receipt.block} · recorded in your ledger.</span>
         </div>
       )}
 

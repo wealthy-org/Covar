@@ -1208,3 +1208,4 @@ html.rv [data-rv="wait"] .fx-area { opacity: 0; }
   .wd-steps li[data-status="current"] .wd-dot { animation: wd-pulse 1.8s ease-in-out infinite; }
 }
 @keyframes wd-pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.14); } 50% { box-shadow: 0 0 0 6px rgba(59, 91, 219, 0.06); } }
+.modal-invest { max-width: 520px; max-height: calc(100vh - 40px); overflow-y: auto; }

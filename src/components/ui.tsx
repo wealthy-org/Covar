@@ -60,6 +60,7 @@ export function Modal({
   subtitle,
   children,
   footer,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
@@ -67,6 +68,7 @@ export function Modal({
   subtitle?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -87,7 +89,7 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
+      <div className={className ? `modal ${className}` : "modal"} role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}>
         <div className="row between" style={{ padding: "18px 24px", borderBottom: "1px solid var(--border)" }}>
           <div className="stack" style={{ gap: 2 }}>
             <h3 className="h4">{title}</h3>
