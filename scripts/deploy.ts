@@ -75,20 +75,32 @@ async function main() {
   }
 
   // gas budget: Robinhood Chain charges the actual base fee, but the wallet must
-  // hold gasLimit × maxFeePerGas up front. ethers' default (2 × base) doubles
-  // that; 1.5 × base with no tip keeps a tiny deployer wallet usable.
-  const feeOv: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint } = {};
+  // hold gasLimit × maxFeePerGas up front for each tx. ethers' default (2 × base)
+  // doubles that. We pick the highest maxFee up to 1.5 × base that the balance
+  // covers (never below 1.1 × base), with no tip, and check the real cost too.
+  const feeOv: { maxFeePerGas?: bigint; maxPriorityFeePerGas?: bigint; gasLimit?: bigint } = {};
   const block = await ethers.provider.getBlock("latest");
+  let deployOv: typeof feeOv = {};
   if (block?.baseFeePerGas) {
-    feeOv.maxFeePerGas = (block.baseFeePerGas * 3n) / 2n;
-    feeOv.maxPriorityFeePerGas = 0n;
+    const base = block.baseFeePerGas;
     const deployTx = await Vault.getDeployTransaction(tokenCfg.address, feeRecipient, operator);
-    const gas = await ethers.provider.estimateGas({ ...deployTx, from: deployer.address });
-    const need = (gas * 120n / 100n + 200_000n) * feeOv.maxFeePerGas; // deploy (+20%) + setLimits + setMinDeposit
-    console.log(`  gas        deploy ≈${gas} gas · base ${ethers.formatUnits(block.baseFeePerGas, "gwei")} gwei · budget ${ethers.formatEther(need)} ETH`);
-    if (balance < need) {
-      throw new Error(`Deployer has ${ethers.formatEther(balance)} ETH but needs about ${ethers.formatEther(need)} ETH up front. Nothing was sent.`);
+    const est = await ethers.provider.estimateGas({ ...deployTx, from: deployer.address });
+    const gasLimit = (est * 105n) / 100n;
+    const followUps = 200_000n; // setLimits + setMinDeposit, generous
+    const fits = balance / gasLimit; // highest maxFee the balance covers for the deploy tx
+    const maxFee = fits < (base * 3n) / 2n ? fits : (base * 3n) / 2n;
+    const realCost = est * base + followUps * maxFee;
+    console.log(
+      `  gas        deploy ≈${est} gas · base ${ethers.formatUnits(base, "gwei")} gwei · max fee ${ethers.formatUnits(maxFee, "gwei")} gwei` +
+        ` · up front ${ethers.formatEther(gasLimit * maxFee)} ETH · real cost ≈${ethers.formatEther(realCost)} ETH`
+    );
+    if (maxFee < (base * 11n) / 10n || balance < realCost) {
+      const need = gasLimit * ((base * 11n) / 10n) > realCost ? gasLimit * ((base * 11n) / 10n) : realCost;
+      throw new Error(`Deployer has ${ethers.formatEther(balance)} ETH but needs about ${ethers.formatEther(need)} ETH. Nothing was sent.`);
     }
+    feeOv.maxFeePerGas = maxFee;
+    feeOv.maxPriorityFeePerGas = 0n;
+    deployOv = { ...feeOv, gasLimit };
   }
 
   const prevFile = path.join(process.cwd(), "deployments", `${chainId}.json`);
@@ -101,7 +113,7 @@ async function main() {
     }
   }
 
-  const vault = await Vault.deploy(tokenCfg.address, feeRecipient, operator, feeOv);
+  const vault = await Vault.deploy(tokenCfg.address, feeRecipient, operator, deployOv);
   await vault.waitForDeployment();
   const address = await vault.getAddress();
   const receipt = await vault.deploymentTransaction()?.wait();
@@ -140,7 +152,9 @@ async function main() {
   const capTx = process.env.VAULT_MAX_PER_TX_USDG || (chainId === 4663 ? "25" : "");
   if (capTvl && capTx) {
     console.log(`\n  setting launch limits: TVL ${capTvl} USDG · per deposit ${capTx} USDG …`);
-    const tx = await limits.setLimits(ethers.parseUnits(capTvl, 6), ethers.parseUnits(capTx, 6), feeOv);
+    const args = [ethers.parseUnits(capTvl, 6), ethers.parseUnits(capTx, 6)] as const;
+    const g = await limits.setLimits.estimateGas(...args);
+    const tx = await limits.setLimits(...args, { ...feeOv, gasLimit: (g * 120n) / 100n });
     await tx.wait();
     Object.assign(manifest, { launchLimits: { maxTotalAssets: capTvl, maxDepositPerTx: capTx, txHash: tx.hash } });
     fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
@@ -148,7 +162,8 @@ async function main() {
   // first mainnet test: 1 USDG minimum so a small wallet can run the full deposit → claim path (owner raises it later in the console)
   if (minDep) {
     console.log(`  setting minimum deposit: ${minDep} USDG …`);
-    const tx = await limits.setMinDeposit(ethers.parseUnits(minDep, 6), feeOv);
+    const g = await limits.setMinDeposit.estimateGas(ethers.parseUnits(minDep, 6));
+    const tx = await limits.setMinDeposit(ethers.parseUnits(minDep, 6), { ...feeOv, gasLimit: (g * 120n) / 100n });
     await tx.wait();
     Object.assign(manifest, { minDeposit: { usdg: minDep, txHash: tx.hash } });
     fs.writeFileSync(file, JSON.stringify(manifest, null, 2));
