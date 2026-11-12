@@ -41,7 +41,8 @@
     "db:pg:deploy": "node scripts/prisma-pg.mjs migrate deploy",
     "db:pg:check": "node scripts/prisma-pg.mjs check",
     "test:indexer": "tsx tests/services/indexer.test.ts",
-    "test:credits": "tsx tests/services/credits.test.ts"
+    "test:credits": "tsx tests/services/credits.test.ts",
+    "cli": "node cli/run.js"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

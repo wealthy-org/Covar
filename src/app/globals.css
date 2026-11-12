@@ -849,6 +849,8 @@ p { margin: 0; }
 .footer { border-top: 1px solid var(--border); background: var(--background); margin-top: 0; }
 .footer-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; padding: 30px 24px 34px; max-width: calc(var(--wrap-lg) + 48px); margin: 0 auto; flex-wrap: wrap; }
 .footer-brand { display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+.footer-social { display: flex; gap: 8px; margin-top: 6px; }
+.footer-x { height: 30px; padding: 0 11px; text-transform: none; letter-spacing: 0.02em; }
 .footer-cols { display: flex; gap: 48px; flex-wrap: wrap; }
 .footer-col { display: flex; flex-direction: column; gap: 2px; min-width: 130px; }
 .footer-col-title { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 6px; }

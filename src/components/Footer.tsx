@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { IS_MAINNET, NETWORK_LABEL } from "@/lib/chain";
+import { X_HANDLE, X_URL, XIcon } from "./Social";
 
 const COLS: { title: string; links: { href: string; label: string; ext?: boolean }[] }[] = [
   {
@@ -36,6 +37,12 @@ export function Footer() {
           <p className="small" style={{ margin: 0 }}>
             Strategy agents with published rules, versioned history and vaults on Robinhood Chain.
           </p>
+          <div className="footer-social">
+            <a href={X_URL} target="_blank" rel="noreferrer noopener" className="nav-btn footer-x" aria-label={`Covar on X (${X_HANDLE})`}>
+              <XIcon size={12} />
+              <span>{X_HANDLE}</span>
+            </a>
+          </div>
         </div>
         <div className="footer-cols">
           {COLS.map((c) => (

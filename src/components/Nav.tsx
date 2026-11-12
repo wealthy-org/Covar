@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { shortAddr } from "@/lib/format";
 import { actions, useCovar } from "@/lib/store";
 import { WalletDialog } from "./WalletDialog";
+import { X_HANDLE, X_URL, XIcon } from "./Social";
 import { CHAINS, EXPECTED_CHAIN_ID, IS_MAINNET, VAULT_ADDRESS, explorerAddress } from "@/lib/chain";
 
 /**
@@ -231,6 +232,16 @@ export function Nav() {
           </nav>
 
           <div className="nav-actions">
+            <a
+              href={X_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="nav-btn nav-btn-icon"
+              aria-label={`Covar on X (${X_HANDLE})`}
+              title={`Follow ${X_HANDLE} on X`}
+            >
+              <XIcon size={13} />
+            </a>
             {marketing ? (
               <Link href="/explore" className="nav-btn nav-btn-ink">
                 Launch app

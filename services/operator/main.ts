@@ -58,7 +58,19 @@ async function main() {
   if (!vaultAddr) throw new Error("set OPERATOR_VAULT_ADDRESS (or NEXT_PUBLIC_COVAR_VAULT_ADDRESS)");
   if (live && !env.OPERATOR_PRIVATE_KEY) throw new Error("OPERATOR_MODE=live needs OPERATOR_PRIVATE_KEY (wallet B, server-side only)");
 
-  const chain = createChainPort({ rpcUrl: rpcUrl(), vault: vaultAddr, privateKey: live ? env.OPERATOR_PRIVATE_KEY : undefined, operatorAddress: env.OPERATOR_ADDRESS });
+  // the testnet v2 vault and the mainnet vault share one address: make the chain explicit and checked
+  const url = rpcUrl();
+  const rpcChainId = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }) })
+    .then((r) => r.json())
+    .then((j: { result?: string }) => (j.result ? Number(BigInt(j.result)) : null))
+    .catch(() => null);
+  const wantChain = { mainnet: 4663, testnet: 46630, local: 31337 }[env.OPERATOR_CHAIN || "testnet"];
+  console.log(`[operator] chain ${env.OPERATOR_CHAIN || "testnet"} · rpc ${url.replace(/\/v2\/.*$/, "/v2/…")} · chainId ${rpcChainId ?? "?"}`);
+  if (wantChain && rpcChainId !== null && rpcChainId !== wantChain) {
+    throw new Error(`OPERATOR_CHAIN=${env.OPERATOR_CHAIN || "testnet"} expects chain ${wantChain} but the RPC is chain ${rpcChainId} — remove OPERATOR_RPC_URL or fix it`);
+  }
+
+  const chain = createChainPort({ rpcUrl: url, vault: vaultAddr, privateKey: live ? env.OPERATOR_PRIVATE_KEY : undefined, operatorAddress: env.OPERATOR_ADDRESS });
   const roleProblem = await chain.checkRole();
   if (roleProblem && live) throw new Error(`refusing live mode: ${roleProblem}`);
 
