@@ -105,6 +105,30 @@ const FAQ = [
   },
 ];
 
+/* ------------------------------------------------------------- CA pill */
+
+const CA = "0x47bd55ed17c20b11742e4252f4660a8338b50f09";
+
+function CaPill() {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(CA);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      /* clipboard blocked */
+    }
+  };
+  return (
+    <button type="button" className="lp-ca" onClick={copy} aria-label="Copy contract address">
+      <span className="lp-ca-k">CA</span>
+      <span className="lp-ca-v">{CA}</span>
+      <span className="lp-ca-copy">{copied ? "Copied" : "Copy"}</span>
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------- page */
 
 export default function LandingPage() {
@@ -131,6 +155,7 @@ export default function LandingPage() {
             <Link href="/explore" className="lp-btn">
               Open the app <span aria-hidden>⟶</span>
             </Link>
+            <CaPill />
           </div>
 
           {/* assistant card */}
