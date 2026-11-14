@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
- * Verify a deployed CovarVault on Blockscout (Robinhood Chain explorers).
+ * Verify a deployed CovarVault (or CovarStockRouter) on Blockscout (Robinhood Chain explorers).
  * Cross-platform, no extra dependencies, needs NO private key.
  *
  *   pnpm verify:testnet            → reads deployments/46630.json
  *   pnpm verify:mainnet            → reads deployments/4663.json
  *   node scripts/verify-blockscout.mjs <chainId> [address]
+ *   pnpm verify:router             → CovarStockRouter, reads deployments/router-4663.json
+ *   (--router or VERIFY_CONTRACT=CovarStockRouter selects the router)
  *
  * Steps: compile (same settings as the deployment) → take the standard-JSON
  * input from artifacts/build-info → check the on-chain creation bytecode
@@ -34,15 +36,18 @@ class Abort extends Error {}
 function fail(msg) {
   throw new Abort(msg);
 }
+const ARGS = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const NAME = process.env.VERIFY_CONTRACT || (process.argv.includes("--router") ? "CovarStockRouter" : "CovarVault");
+
 async function main() {
-  const chainId = Number(process.argv[2] || 46630);
+  const chainId = Number(ARGS[0] || 46630);
   const cfg = EXPLORERS[chainId];
   if (!cfg) fail(`Unknown chain ${chainId} (use 46630 or 4663)`);
   cfg.rpc = clean(cfg.rpc) || (chainId === 4663 ? "https://rpc.mainnet.chain.robinhood.com" : "https://rpc.testnet.chain.robinhood.com");
 
-  const manifestPath = join("deployments", `${chainId}.json`);
+  const manifestPath = join("deployments", NAME === "CovarVault" ? `${chainId}.json` : `router-${chainId}.json`);
   const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null;
-  const address = process.argv[3] || manifest?.address;
+  const address = ARGS[1] || manifest?.address;
   if (!address) fail(`No address: pass it as an argument or deploy first (${manifestPath} missing)`);
 
   async function rpc(method, params) {
@@ -64,20 +69,20 @@ async function main() {
     }
   }
 
-  console.log(`\nCovar · verify CovarVault on chain ${chainId}\n  address  ${address}\n  explorer ${cfg.api}`);
+  console.log(`\nCovar · verify ${NAME} on chain ${chainId}\n  address  ${address}\n  explorer ${cfg.api}`);
 
   // 1 — compile with the repo's settings (cross-platform launcher)
   execFileSync(process.execPath, ["scripts/hardhat.mjs", "compile", "--quiet"], { stdio: "inherit" });
   const buildDir = join("artifacts", "build-info");
   // the build-info the CovarVault artifact points to (older build-info files can linger)
-  const dbgPath = join("artifacts", "contracts", "CovarVault.sol", "CovarVault.dbg.json");
+  const dbgPath = join("artifacts", "contracts", `${NAME}.sol`, `${NAME}.dbg.json`);
   const build = existsSync(dbgPath)
-    ? JSON.parse(readFileSync(join("artifacts", "contracts", "CovarVault.sol", JSON.parse(readFileSync(dbgPath, "utf8")).buildInfo), "utf8"))
+    ? JSON.parse(readFileSync(join("artifacts", "contracts", `${NAME}.sol`, JSON.parse(readFileSync(dbgPath, "utf8")).buildInfo), "utf8"))
     : readdirSync(buildDir)
         .map((f) => JSON.parse(readFileSync(join(buildDir, f), "utf8")))
-        .find((b) => b.output?.contracts?.["contracts/CovarVault.sol"]?.CovarVault);
-  if (!build) fail("CovarVault build-info not found after compile");
-  const bytecode = "0x" + build.output.contracts["contracts/CovarVault.sol"].CovarVault.evm.bytecode.object;
+        .find((b) => b.output?.contracts?.[`contracts/${NAME}.sol`]?.[NAME]);
+  if (!build) fail(`${NAME} build-info not found after compile`);
+  const bytecode = "0x" + build.output.contracts[`contracts/${NAME}.sol`][NAME].evm.bytecode.object;
 
   // 2 — already verified?
   // existence comes from the chain itself, not the explorer
@@ -92,7 +97,7 @@ async function main() {
   }
 
   // 3 — the creation input must start with our bytecode, else the source differs
-  const txHash = manifest?.address?.toLowerCase() === address.toLowerCase() ? manifest.txHash : info?.creation_transaction_hash;
+  const txHash = manifest?.address?.toLowerCase() === address.toLowerCase() ? (manifest.txHash || manifest.deployTx) : info?.creation_transaction_hash;
   if (!txHash) fail(`creation transaction unknown — run from the folder that holds ${manifestPath} for this address`);
   const tx = await rpc("eth_getTransactionByHash", [txHash]);
   const input = (tx?.input || "").toLowerCase();
@@ -114,7 +119,7 @@ async function main() {
       const r = await fetch(`${SOURCIFY}/v2/verify/${chainId}/${address}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ stdJsonInput: build.input, compilerVersion: build.solcLongVersion, contractIdentifier: "contracts/CovarVault.sol:CovarVault", creationTransactionHash: txHash }),
+        body: JSON.stringify({ stdJsonInput: build.input, compilerVersion: build.solcLongVersion, contractIdentifier: `contracts/${NAME}.sol:${NAME}`, creationTransactionHash: txHash }),
       });
       const j = await r.json();
       if (j.verificationId) {
@@ -150,7 +155,7 @@ async function main() {
   form.append("license_type", "mit");
   form.append("autodetect_constructor_args", "false");
   form.append("constructor_args", constructorArgs);
-  form.append("files[0]", new Blob([JSON.stringify(build.input)], { type: "application/json" }), "CovarVault.json");
+  form.append("files[0]", new Blob([JSON.stringify(build.input)], { type: "application/json" }), `${NAME}.json`);
   const res = await fetch(`${cfg.api}/api/v2/smart-contracts/${address}/verification/via/standard-input`, { method: "POST", body: form }).catch(() => null);
   const body = res ? await res.text() : "";
   if (!res?.ok && !sourcify) fail(`explorer rejected the request: HTTP ${res?.status ?? "unreachable"} ${body.slice(0, 200)}`);

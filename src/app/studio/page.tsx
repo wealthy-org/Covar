@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Builder } from "@/components/Builder";
 import { InstantStockAgent } from "@/components/stock/InstantStockAgent";
+import { Icon } from "@/components/Icon";
 import { actions, useCovar } from "@/lib/store";
 import { cx, pctSigned, timeAgo, usd, usdSigned } from "@/lib/format";
 import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
@@ -281,14 +282,14 @@ function StudioModeSwitch({ mode, onMode }: { mode: StudioMode; onMode: (m: Stud
   return (
     <div className="mode-switch" role="tablist" aria-label="Studio mode" data-testid="studio-mode">
       <button role="tab" aria-selected={mode === "stock"} data-active={mode === "stock"} onClick={() => onMode("stock")} data-testid="mode-stock">
-        <span className="mode-glyph">⚡</span>
+        <span className="mode-glyph"><Icon name="zap" size={18} /></span>
         <span className="stack" style={{ gap: 1 }}>
           <span className="mode-title">Instant Stock Agent</span>
           <span className="mode-sub">Chat → on-chain swap → take-profit watcher</span>
         </span>
       </button>
       <button role="tab" aria-selected={mode === "quant"} data-active={mode === "quant"} onClick={() => onMode("quant")} data-testid="mode-quant">
-        <span className="mode-glyph">📊</span>
+        <span className="mode-glyph"><Icon name="candles" size={18} /></span>
         <span className="stack" style={{ gap: 1 }}>
           <span className="mode-title">Quant Strategy Builder</span>
           <span className="mode-sub">EMA / RSI rules → backtest → publish vault</span>

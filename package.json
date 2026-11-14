@@ -47,7 +47,8 @@
     "test:intent": "tsx tests/stockIntent.test.ts",
     "test:trade": "tsx tests/stockTrade.test.ts",
     "test:contracts:fork": "HARDHAT_FORK_URL=https://rpc.mainnet.chain.robinhood.com node scripts/hardhat.mjs test tests/contracts/CovarStockRouter.fork.test.ts",
-    "deploy:router": "node scripts/hardhat.mjs run scripts/deploy-router.ts"
+    "deploy:router": "node scripts/hardhat.mjs run scripts/deploy-router.ts",
+    "verify:router": "node scripts/verify-blockscout.mjs 4663 --router"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

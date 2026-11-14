@@ -210,6 +210,7 @@ test("QA #5–#8 · buy on chain → watcher → target hit → Lock Profit sell
   // price moves +1.44% → progress 36%
   ctx.price = 165.2;
   await expect(page.getByTestId("watcher-progress")).toHaveText("36%", { timeout: 12_000 });
+  if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/agent-watching.png`, fullPage: true });
 
   // QA #7: the price reaches the +4% target → green Lock Profit + banner
   ctx.price = 169.5;

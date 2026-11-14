@@ -15,6 +15,7 @@
  * 0x quote at the time they sell.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Icon } from "@/components/Icon";
 import { cx, shortAddr } from "@/lib/format";
 import { describeIntent, parseStockIntent, type StockTradeIntent } from "@/lib/stockIntent";
 import { DEFAULT_SLIPPAGE_BPS, REGION_BLOCKED_MESSAGE, USDG, findStock, fromUnits, toUnits, type MarketInfo, type TradeQuote } from "@/lib/stockTrade";
@@ -213,7 +214,7 @@ export function InstantStockAgent() {
       chime();
       setBanner(
         w.hit === "target"
-          ? { tone: "ok", text: T(lang, `🎯 Target ${p.symbol} +${p.takeProfitPct}% tercapai! Kunci profit dengan menjual ke USDG.`, `🎯 ${p.symbol} +${p.takeProfitPct}% target hit! Lock the profit by selling to USDG.`) }
+          ? { tone: "ok", text: T(lang, `Target ${p.symbol} +${p.takeProfitPct}% tercapai! Kunci profit dengan menjual ke USDG.`, `${p.symbol} +${p.takeProfitPct}% target hit! Lock the profit by selling to USDG.`) }
           : { tone: "warn", text: T(lang, `${p.symbol} menyentuh stop −${p.stopLossPct}%. Jual sekarang untuk membatasi rugi.`, `${p.symbol} hit the −${p.stopLossPct}% stop. Sell now to limit the loss.`) }
       );
       return up;
@@ -359,7 +360,10 @@ export function InstantStockAgent() {
     <div className="stack gap-20" data-testid="stock-agent">
       {banner && (
         <div className={cx("agent-banner", banner.tone === "ok" ? "agent-banner-ok" : "agent-banner-warn")} role="status" data-testid="tp-banner">
-          <span>{banner.text}</span>
+          <span className="row gap-8">
+            <Icon name={banner.tone === "ok" ? "target" : "alert"} size={17} />
+            {banner.text}
+          </span>
           <button className="link-btn" onClick={() => setBanner(null)}>
             {T(lang, "tutup", "dismiss")}
           </button>
@@ -740,7 +744,10 @@ export function ActiveStockWatcherCard({
       <div className="row between wrap gap-8">
         <div className="row gap-8">
           <span className={cx("pill", hit ? "pill-green" : stopped ? "pill-red" : "pill-amber")} data-testid="watcher-status">
-            {hit ? "🎯 TARGET ACHIEVED" : stopped ? "STOP HIT" : "🟢 ACTIVE WATCHER"}
+            <span className={cx("pill-ico", !hit && !stopped && "pill-live")}>
+              <Icon name={hit ? "target" : stopped ? "alert" : "live"} size={12} />
+            </span>
+            {hit ? "TARGET ACHIEVED" : stopped ? "STOP HIT" : "ACTIVE WATCHER"}
           </span>
           <strong className="small">{p.symbol} {T(lang, "Agen", "Agent")}</strong>
         </div>
@@ -816,7 +823,7 @@ function MiniProof({ rec, lang }: { rec: TradeRecord; lang: Lang }) {
       </div>
       <Row k="USDG" v={`${u > 0n ? "+" : ""}${fmtU(u, 6)}`} />
       <Row k={rec.symbol} v={`${s > 0n ? "+" : ""}${fmtS(s, 8)}`} sub={<a href={tokenUrl(rec.stockAddress)} target="_blank" rel="noreferrer noopener" className="mono">official {shortAddr(rec.stockAddress, 4)} ↗</a>} />
-      {rec.covarEvent && <Row k={T(lang, "Lewat Covar", "Executed through Covar")} v={`${rec.covarEvent.kind} ✓`} tone="ok" sub={`fee ${fmtU(rec.covarEvent.fee, 6)} USDG`} />}
+      {rec.covarEvent && <Row k={T(lang, "Lewat Covar", "Executed through Covar")} v={<span className="row gap-4"><Icon name="check" size={13} />{rec.covarEvent.kind}</span>} tone="ok" sub={`fee ${fmtU(rec.covarEvent.fee, 6)} USDG`} />}
       <Row k={T(lang, "Transaksi", "Transaction")} v={<a href={txUrl(rec.hash)} target="_blank" rel="noreferrer noopener" className="mono" data-testid="agent-proof-tx">{shortAddr(rec.hash, 8)} ↗</a>} sub={`block ${rec.block.toLocaleString("en-US")}`} />
     </div>
   );
