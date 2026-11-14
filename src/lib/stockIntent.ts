@@ -84,13 +84,12 @@ function detectLang(text: string): "id" | "en" {
   return ID_WORDS.test(text) ? "id" : "en";
 }
 
-const msg = (lang: "id" | "en", id: string, en: string) => (lang === "id" ? id : en);
 
 export function parseStockIntent(text: string): IntentResult {
   const raw = (text ?? "").trim();
   const lang = detectLang(raw);
   numLang = lang;
-  if (!raw) return { ok: false, code: "EMPTY", lang, message: msg(lang, "Ketik perintah, misalnya: Beli $50 NVDA, jual pas naik 4%.", "Type an order, e.g. Buy $50 NVDA, take profit 4%.") };
+  if (!raw) return { ok: false, code: "EMPTY", lang, message: "Type an order, e.g. Buy $50 NVDA, take profit 4%." };
   let lower = ` ${raw.toLowerCase().replace(/\s+/g, " ")} `;
 
   // ---- stock
@@ -112,16 +111,16 @@ export function parseStockIntent(text: string): IntentResult {
         ok: false,
         code: "UNSUPPORTED_STOCK",
         lang,
-        message: msg(lang, `${ticker[1]} belum didukung. Saham yang tersedia: ${Object.keys(INTENT_STOCKS).join(", ")}.`, `${ticker[1]} isn't supported yet. Available: ${Object.keys(INTENT_STOCKS).join(", ")}.`),
+        message: `${ticker[1]} isn't supported yet. Available: ${Object.keys(INTENT_STOCKS).join(", ")}.`,
       };
     }
-    return { ok: false, code: "NO_STOCK", lang, message: msg(lang, "Saham mana? Contoh: Beli $50 NVDA.", "Which stock? For example: Buy $50 NVDA.") };
+    return { ok: false, code: "NO_STOCK", lang, message: "Which stock? For example: Buy $50 NVDA." };
   }
 
   // ---- side: the FIRST action word decides ("beli … jual pas naik 4%" is a buy with a TP)
   const sideRe = /\b(beli|buy|ambil|long|purchase|jual|sell|close|exit|keluar|lepas)\b/g;
   const first = sideRe.exec(lower);
-  if (!first) return { ok: false, code: "NO_SIDE", lang, message: msg(lang, "Mau beli atau jual? Contoh: Beli $50 NVDA.", "Buy or sell? For example: Buy $50 NVDA.") };
+  if (!first) return { ok: false, code: "NO_SIDE", lang, message: "Buy or sell? For example: Buy $50 NVDA." };
   const side: "BUY" | "SELL" = /^(beli|buy|ambil|long|purchase)$/.test(first[1]) ? "BUY" : "SELL";
 
   // ---- take-profit / stop-loss (parsed first, then removed so their numbers are not read as amounts)
@@ -153,10 +152,10 @@ export function parseStockIntent(text: string): IntentResult {
   lower = lower.replace(new RegExp(PCT, "g"), " ");
 
   if (takeProfitPct !== undefined && !(takeProfitPct > 0 && takeProfitPct <= MAX_TP_PCT)) {
-    return { ok: false, code: "BAD_NUMBER", lang, message: msg(lang, `Target profit harus antara 0 dan ${MAX_TP_PCT}%.`, `Take-profit must be between 0 and ${MAX_TP_PCT}%.`) };
+    return { ok: false, code: "BAD_NUMBER", lang, message: `Take-profit must be between 0 and ${MAX_TP_PCT}%.` };
   }
   if (stopLossPct !== undefined && !(stopLossPct > 0 && stopLossPct <= MAX_SL_PCT)) {
-    return { ok: false, code: "BAD_NUMBER", lang, message: msg(lang, `Stop loss harus antara 0 dan ${MAX_SL_PCT}%.`, `Stop-loss must be between 0 and ${MAX_SL_PCT}%.`) };
+    return { ok: false, code: "BAD_NUMBER", lang, message: `Stop-loss must be between 0 and ${MAX_SL_PCT}%.` };
   }
 
   // ---- amount
@@ -179,7 +178,7 @@ export function parseStockIntent(text: string): IntentResult {
 
   for (const v of [amountUsdg, amountShares]) {
     if (v !== undefined && !(Number.isFinite(v) && v > 0)) {
-      return { ok: false, code: "BAD_NUMBER", lang, message: msg(lang, "Jumlahnya harus lebih dari nol.", "The amount must be greater than zero.") };
+      return { ok: false, code: "BAD_NUMBER", lang, message: "The amount must be greater than zero." };
     }
   }
 
@@ -189,7 +188,7 @@ export function parseStockIntent(text: string): IntentResult {
       amountUsdg = DEFAULT_BUY_USDG;
       amountDefaulted = true;
     } else {
-      return { ok: false, code: "NO_AMOUNT", lang, message: msg(lang, `Berapa ${stock} yang mau dijual? Contoh: Jual NVDA $50, atau jual semua NVDA.`, `How much ${stock} to sell? For example: Sell NVDA $50, or sell all NVDA.`) };
+      return { ok: false, code: "NO_AMOUNT", lang, message: `How much ${stock} to sell? For example: Sell NVDA $50, or sell all NVDA.` };
     }
   }
 
@@ -208,28 +207,27 @@ export function intentCore(i: StockTradeIntent) {
   return core;
 }
 
-/** Plain-language confirmation the copilot shows, in the user's language. */
+/** Plain-language confirmation the copilot shows (always English; Indonesian input is still understood). */
 export function describeIntent(i: StockTradeIntent, ctx: { price?: number | null; label?: string | null } = {}): string {
-  const id = i.lang === "id";
   const p = ctx.price ?? null;
   const usd = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const parts: string[] = [];
   if (i.side === "BUY") {
     const amt = `${usd(i.amountUsdg ?? 0)} USDG`;
-    parts.push(id ? `Saya siapkan pembelian ${i.stock} senilai ${amt}${i.amountDefaulted ? " (jumlah default — ubah kalau perlu)" : ""}.` : `I've prepared a buy of ${i.stock} for ${amt}${i.amountDefaulted ? " (default amount — change it if you like)" : ""}.`);
+    parts.push(`I've prepared a buy of ${i.stock} for ${amt}${i.amountDefaulted ? " (default amount — change it if you like)" : ""}.`);
     if (i.takeProfitPct !== undefined) {
       const tgt = p ? ` ($${usd(p * (1 + i.takeProfitPct / 100))})` : "";
-      parts.push(id ? `Target take-profit +${i.takeProfitPct}%${tgt}: watcher akan memantau harga dan memberi tahu saat target tercapai.` : `Take-profit at +${i.takeProfitPct}%${tgt}: the watcher tracks the price and tells you when it hits.`);
+      parts.push(`Take-profit at +${i.takeProfitPct}%${tgt}: the watcher tracks the price and tells you when it hits.`);
     }
     if (i.stopLossPct !== undefined) {
       const sl = p ? ` ($${usd(p * (1 - i.stopLossPct / 100))})` : "";
-      parts.push(id ? `Stop-loss −${i.stopLossPct}%${sl}.` : `Stop-loss at −${i.stopLossPct}%${sl}.`);
+      parts.push(`Stop-loss at −${i.stopLossPct}%${sl}.`);
     }
   } else {
-    const what = i.sellAll ? (id ? `semua ${i.stock} Anda` : `all your ${i.stock}`) : i.amountShares !== undefined ? `${i.amountShares} ${i.stock}` : id ? `${i.stock} senilai ${usd(i.amountUsdg ?? 0)} USDG` : `${usd(i.amountUsdg ?? 0)} USDG of ${i.stock}`;
-    parts.push(id ? `Saya siapkan penjualan ${what} ke USDG.` : `I've prepared a sale of ${what} for USDG.`);
+    const what = i.sellAll ? `all your ${i.stock}` : i.amountShares !== undefined ? `${i.amountShares} ${i.stock}` : `${usd(i.amountUsdg ?? 0)} USDG of ${i.stock}`;
+    parts.push(`I've prepared a sale of ${what} for USDG.`);
   }
-  if (p) parts.push(id ? `Harga saham acuan $${usd(p)}${ctx.label ? ` · ${ctx.label}` : ""}.` : `Reference share price $${usd(p)}${ctx.label ? ` · ${ctx.label}` : ""}.`);
-  parts.push(id ? "Rincian rute ada di panel kanan; harga final adalah quote 0x saat Anda konfirmasi." : "The route is on the right; the final price is the 0x quote when you confirm.");
+  if (p) parts.push(`Reference share price $${usd(p)}${ctx.label ? ` · ${ctx.label}` : ""}.`);
+  parts.push("The route is on the right; the final price is the 0x quote when you confirm.");
   return parts.join(" ");
 }

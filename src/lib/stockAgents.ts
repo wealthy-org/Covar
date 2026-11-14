@@ -137,25 +137,14 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export type TradeStep = "checking" | "approve" | "approve_wait" | "quote" | "sign" | "confirming" | "done";
 
-export const STEP_TEXT: Record<"id" | "en", Record<TradeStep, string>> = {
-  en: {
-    checking: "Checking your balance and approval…",
-    approve: "Step 1 · Approve in your wallet (exact amount only)…",
-    approve_wait: "Waiting for the approval to confirm…",
-    quote: "Getting the executable 0x quote…",
-    sign: "Step 2 · Confirm the swap in your wallet…",
-    confirming: "Waiting for Robinhood Chain to confirm…",
-    done: "Confirmed on chain.",
-  },
-  id: {
-    checking: "Memeriksa saldo dan approval…",
-    approve: "Langkah 1 · Approve di wallet (hanya jumlah persis)…",
-    approve_wait: "Menunggu approval terkonfirmasi…",
-    quote: "Mengambil quote 0x yang bisa dieksekusi…",
-    sign: "Langkah 2 · Konfirmasi swap di wallet…",
-    confirming: "Menunggu konfirmasi Robinhood Chain…",
-    done: "Terkonfirmasi on-chain.",
-  },
+export const STEP_TEXT: Record<TradeStep, string> = {
+  checking: "Checking your balance and approval…",
+  approve: "Step 1 · Approve in your wallet (exact amount only)…",
+  approve_wait: "Waiting for the approval to confirm…",
+  quote: "Getting the executable 0x quote…",
+  sign: "Step 2 · Confirm the swap in your wallet…",
+  confirming: "Waiting for Robinhood Chain to confirm…",
+  done: "Confirmed on chain.",
 };
 
 /**

@@ -133,9 +133,10 @@ t("TP/SL are ignored on a sell (they belong to a position)", () => {
   assert.equal(i.takeProfitPct, undefined);
 });
 
-t("copilot reply answers in the user's language with the target price", () => {
+t("copilot reply is always English (Indonesian input still understood) with the target price", () => {
   const id = describeIntent(ok("Beli $50 NVDA, jual pas naik 4%"), { price: 162.85, label: "Market Closed · Using Last Close" });
-  assert.match(id, /pembelian NVDA senilai 50\.00 USDG/);
+  assert.match(id, /buy of NVDA for 50\.00 USDG/);
+  assert.doesNotMatch(id, /pembelian|senilai|harga|Anda/);
   assert.match(id, /\+4% \(\$169\.36\)/);
   assert.match(id, /Market Closed · Using Last Close/);
   const en = describeIntent(ok("Buy $50 NVDA take profit 4%"), { price: 162.85 });

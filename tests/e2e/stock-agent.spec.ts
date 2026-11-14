@@ -162,7 +162,7 @@ test("QA #9 · /studio keeps the Quant builder as default; the stock mode is one
   await expect(page.locator("text=Your agents")).toBeVisible();
 });
 
-test("QA #4 · Indonesian and English prompts build the same route", async ({ page }) => {
+test("QA #4 · Indonesian and English prompts build the same route; replies are English", async ({ page }) => {
   const ctx: Ctx = { allowance: { usdg: 0n, nvda: 0n }, sent: [], nextSwap: "buy", price: 162.85 };
   await rig(page, ctx);
   await openAgent(page);
@@ -174,7 +174,7 @@ test("QA #4 · Indonesian and English prompts build the same route", async ({ pa
     await expect(review.getByTestId("rr-target")).toContainText("+4% ($169.36)");
     await expect(review.getByTestId("rr-spot")).toContainText("$162.85");
   }
-  await expect(page.getByTestId("agent-msg").first()).toContainText("pembelian NVDA senilai 50.00 USDG");
+  await expect(page.getByTestId("agent-msg").first()).toContainText("buy of NVDA for 50.00 USDG");
   await expect(page.getByTestId("agent-msg").last()).toContainText("buy of NVDA for 50.00 USDG");
 });
 
@@ -186,9 +186,9 @@ test("QA #5–#8 · buy on chain → watcher → target hit → Lock Profit sell
   await page.getByTestId("agent-send").click();
   const review = page.getByTestId("route-review");
   await expect(review.getByTestId("rr-out")).toContainText("NVDA");
-  await expect(review).toContainText("Minimum diterima (slippage 0.5%)");
+  await expect(review).toContainText("Minimum received (0.5% slippage)");
   await page.getByTestId("agent-attest").check();
-  await expect(page.getByTestId("agent-execute")).toHaveText(/Approve & Beli NVDA On-Chain/);
+  await expect(page.getByTestId("agent-execute")).toHaveText(/Approve & Buy NVDA On-Chain/);
   await page.getByTestId("agent-execute").click();
 
   // QA #5: approval is exact and goes to the 0x AllowanceHolder; then the swap
@@ -205,7 +205,7 @@ test("QA #5–#8 · buy on chain → watcher → target hit → Lock Profit sell
   await expect(page.getByTestId("route-review")).toHaveCount(0);
   await expect(page.getByTestId("watcher-status")).toHaveText(/ACTIVE WATCHER/);
   await expect(watcher).toContainText("$169.36");
-  await expect(page.getByTestId("watcher-sell")).toHaveText(/Keluar Darurat|Emergency/);
+  await expect(page.getByTestId("watcher-sell")).toHaveText("Emergency Market Exit (Sell Now)");
 
   // price moves +1.44% → progress 36%
   ctx.price = 165.2;
@@ -215,8 +215,8 @@ test("QA #5–#8 · buy on chain → watcher → target hit → Lock Profit sell
   // QA #7: the price reaches the +4% target → green Lock Profit + banner
   ctx.price = 169.5;
   await expect(page.getByTestId("watcher-status")).toHaveText(/TARGET ACHIEVED/, { timeout: 12_000 });
-  await expect(page.getByTestId("tp-banner")).toContainText("Target NVDA +4% tercapai");
-  await expect(page.getByTestId("watcher-sell")).toHaveText("Kunci Profit: Jual NVDA ke USDG");
+  await expect(page.getByTestId("tp-banner")).toContainText("NVDA +4% target hit!");
+  await expect(page.getByTestId("watcher-sell")).toHaveText("Lock Profit: Sell NVDA to USDG");
   if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/agent-target-hit.png`, fullPage: true });
 
   // QA #8: the sale — NVDA leaves, USDG comes back, realised P&L from the receipts
@@ -227,6 +227,9 @@ test("QA #5–#8 · buy on chain → watcher → target hit → Lock Profit sell
   await expect(page.getByTestId("watcher-card")).toHaveCount(0);
   await expect(page.getByTestId("agent-msg").last()).toContainText("+52.1 USDG");
   expect(ctx.sent.map((s) => s.to)).toEqual([USDG, "0x" + AH, "0x" + AH]);
+  // English only: the Indonesian prompt was understood, but nothing on screen is in Indonesian
+  const ui = (await page.getByTestId("stock-agent").innerText()).replace("Beli $50 NVDA, jual pas naik 4%", "");
+  expect(ui).not.toMatch(/\b(beli|jual|tercapai|harga|saham|untuk|dengan|sekarang|kunci|keluar|darurat|tutup|kirim|agen|selesai|dari|anda|belum|langkah|menunggu|hapus|bukti|diterima)\b/i);
   if (process.env.E2E_SHOTS) await page.screenshot({ path: `${process.env.E2E_SHOTS}/agent-closed.png`, fullPage: true });
 });
 

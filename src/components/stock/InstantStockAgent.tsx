@@ -3,7 +3,7 @@
 /**
  * Mode A in /studio — Instant Stock Agent.
  *
- *   type "Beli $50 NVDA, jual pas naik 4%"  →  intent (instant, no model call)
+ *   type "Buy $50 NVDA, take profit 4%"  →  intent (instant, no model call)
  *   → Route Review (live share price + executable 0x quote, 0.5% max slippage)
  *   → Approve (exact) → Swap, signed in the user's wallet on Robinhood Chain
  *   → Active Watcher: live price every 5 s, progress to target, banner + chime
@@ -36,7 +36,6 @@ import {
 import { useWalletAccount } from "@/lib/useWalletAccount";
 import type { StockPrice } from "@/lib/stockPrices";
 
-type Lang = "id" | "en";
 interface Msg {
   id: number;
   role: "user" | "agent";
@@ -45,13 +44,12 @@ interface Msg {
   hash?: string;
 }
 
-const EXAMPLES = ["Beli $50 NVDA, jual pas naik 4%", "Buy $25 NVDA take profit 3%, stop loss 2%", "Jual semua NVDA"];
+const EXAMPLES = ["Buy $50 NVDA, take profit 4%", "Buy $25 NVDA take profit 3%, stop loss 2%", "Sell all NVDA"];
 
 const usd2 = (n: number | null | undefined) =>
   n === null || n === undefined || !Number.isFinite(n) ? "—" : `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtU = (v: bigint | string, frac = 2) => fromUnits(BigInt(v), USDG.decimals, frac);
 const fmtS = (v: bigint | string, frac = 6) => fromUnits(BigInt(v), 18, frac);
-const T = (lang: Lang, id: string, en: string) => (lang === "id" ? id : en);
 
 /* --------------------------------------------------------------- prices */
 
@@ -103,7 +101,6 @@ export function InstantStockAgent() {
   const [attested, setAttestedState] = useState(false);
   const [banner, setBanner] = useState<{ text: string; tone: "ok" | "warn" } | null>(null);
   const nextId = useRef(1);
-  const lang: Lang = intent?.lang ?? (messages.filter((m) => m.role === "user").slice(-1)[0] && /\b(beli|jual)\b/i.test(messages.filter((m) => m.role === "user").slice(-1)[0].text) ? "id" : "en");
 
   const say = useCallback((m: Omit<Msg, "id">) => setMessages((x) => [...x, { ...m, id: nextId.current++ }]), []);
 
@@ -214,8 +211,8 @@ export function InstantStockAgent() {
       chime();
       setBanner(
         w.hit === "target"
-          ? { tone: "ok", text: T(lang, `Target ${p.symbol} +${p.takeProfitPct}% tercapai! Kunci profit dengan menjual ke USDG.`, `${p.symbol} +${p.takeProfitPct}% target hit! Lock the profit by selling to USDG.`) }
-          : { tone: "warn", text: T(lang, `${p.symbol} menyentuh stop −${p.stopLossPct}%. Jual sekarang untuk membatasi rugi.`, `${p.symbol} hit the −${p.stopLossPct}% stop. Sell now to limit the loss.`) }
+          ? { tone: "ok", text: `${p.symbol} +${p.takeProfitPct}% target hit! Lock the profit by selling to USDG.` }
+          : { tone: "warn", text: `${p.symbol} hit the −${p.stopLossPct}% stop. Sell now to limit the loss.` }
       );
       return up;
     });
@@ -239,13 +236,13 @@ export function InstantStockAgent() {
     const a = findStock(r.intent.stock);
     if (!a) {
       setIntent(null);
-      say({ role: "agent", text: T(r.intent.lang, `${r.intent.stock} belum tersedia.`, `${r.intent.stock} isn't available.`), tone: "err" });
+      say({ role: "agent", text: `${r.intent.stock} isn't available.`, tone: "err" });
       return;
     }
     setIntent(r.intent);
     const p = prices[r.intent.stock];
     let reply = describeIntent(r.intent, { price: p?.price ?? null, label: p?.label ?? null });
-    if (!a.enabled) reply += " " + T(r.intent.lang, `Catatan: ${a.symbol} belum dibuka untuk trading di Covar — NVDA adalah pilot pertama.`, `Note: ${a.symbol} isn't open for trading on Covar yet — NVDA is the first pilot.`);
+    if (!a.enabled) reply += " " + `Note: ${a.symbol} isn't open for trading on Covar yet — NVDA is the first pilot.`;
     say({ role: "agent", text: reply });
   };
 
@@ -282,11 +279,11 @@ export function InstantStockAgent() {
           tone: "ok",
           hash: rec.hash,
           text:
-            T(lang, `Beli selesai: ${fmtS(pos.shares, 6)} ${asset.symbol} untuk ${fmtU(pos.usdgIn, 6)} USDG (terbaca dari receipt).`, `Bought ${fmtS(pos.shares, 6)} ${asset.symbol} for ${fmtU(pos.usdgIn, 6)} USDG (read from the receipt).`) +
-            (pos.targetRef ? " " + T(lang, `Watcher aktif — target ${usd2(pos.targetRef)} (+${pos.takeProfitPct}%).`, `Watcher is live — target ${usd2(pos.targetRef)} (+${pos.takeProfitPct}%).`) : ""),
+            `Bought ${fmtS(pos.shares, 6)} ${asset.symbol} for ${fmtU(pos.usdgIn, 6)} USDG (read from the receipt).` +
+            (pos.targetRef ? " " + `Watcher is live — target ${usd2(pos.targetRef)} (+${pos.takeProfitPct}%).` : ""),
         });
       } else {
-        say({ role: "agent", tone: "ok", hash: rec.hash, text: T(lang, `Jual selesai: ${fmtS(-BigInt(rec.stockDelta))} ${asset.symbol} → +${fmtU(rec.usdgDelta, 6)} USDG.`, `Sold ${fmtS(-BigInt(rec.stockDelta))} ${asset.symbol} → +${fmtU(rec.usdgDelta, 6)} USDG.`) });
+        say({ role: "agent", tone: "ok", hash: rec.hash, text: `Sold ${fmtS(-BigInt(rec.stockDelta))} ${asset.symbol} → +${fmtU(rec.usdgDelta, 6)} USDG.` });
       }
       setIntent(null);
       void refreshWallet();
@@ -309,10 +306,10 @@ export function InstantStockAgent() {
     try {
       if (!account) return void (await connect());
       const m = await fetchMarket(p.symbol);
-      if (!m.tradingEnabled || !m.region.allowed) throw new Error(m.region.message || T(lang, "Trading sedang tidak tersedia.", "Trading isn't available right now."));
+      if (!m.tradingEnabled || !m.region.allowed) throw new Error(m.region.message || "Trading isn't available right now.");
       const w = await readWallet(account, a, spenderFor(m));
       const units = BigInt(p.shares) < w.stock ? BigInt(p.shares) : w.stock;
-      if (units <= 0n) throw new Error(T(lang, `Wallet ini tidak memegang ${p.symbol} lagi. Hapus watcher ini kalau posisinya sudah ditutup di tempat lain.`, `This wallet no longer holds ${p.symbol}. Dismiss the watcher if you closed it elsewhere.`));
+      if (units <= 0n) throw new Error(`This wallet no longer holds ${p.symbol}. Dismiss the watcher if you closed it elsewhere.`);
       const { rec } = await runTrade({
         account,
         asset: a,
@@ -336,7 +333,7 @@ export function InstantStockAgent() {
         role: "agent",
         tone: "ok",
         hash: rec.hash,
-        text: T(lang, `Posisi ${p.symbol} ditutup: +${fmtU(out, 6)} USDG kembali ke wallet. Hasil nyata ${pnl >= 0n ? "+" : ""}${fmtU(pnl, 6)} USDG (setelah spread & fee).`, `${p.symbol} position closed: +${fmtU(out, 6)} USDG back in your wallet. Realised ${pnl >= 0n ? "+" : ""}${fmtU(pnl, 6)} USDG (after spread & fees).`),
+        text: `${p.symbol} position closed: +${fmtU(out, 6)} USDG back in your wallet. Realised ${pnl >= 0n ? "+" : ""}${fmtU(pnl, 6)} USDG (after spread & fees).`,
       });
       void refreshWallet();
     } catch (e) {
@@ -365,7 +362,7 @@ export function InstantStockAgent() {
             {banner.text}
           </span>
           <button className="link-btn" onClick={() => setBanner(null)}>
-            {T(lang, "tutup", "dismiss")}
+            dismiss
           </button>
         </div>
       )}
@@ -375,12 +372,12 @@ export function InstantStockAgent() {
         <div className="rcard rcard-pad stack gap-14" data-testid="agent-chat">
           <div className="row between wrap gap-8">
             <span className="stat-label">Instant Stock Agent · Robinhood Chain</span>
-            <span className="tiny">{account ? <a href={addressUrl(account)} target="_blank" rel="noreferrer noopener" className="mono">{shortAddr(account, 4)} ↗</a> : T(lang, "wallet belum terhubung", "wallet not connected")}</span>
+            <span className="tiny">{account ? <a href={addressUrl(account)} target="_blank" rel="noreferrer noopener" className="mono">{shortAddr(account, 4)} ↗</a> : "wallet not connected"}</span>
           </div>
           <div className="chat-log" aria-live="polite">
             {messages.length === 0 && (
               <div className="chat-msg chat-agent">
-                Tell me what to trade, in English or Bahasa Indonesia — e.g. <em>“Beli $50 NVDA, jual pas naik 4%”</em>. I prepare the route; you confirm every transaction in your own wallet.
+                Tell me what to trade in plain words — e.g. <em>“Buy $50 NVDA, take profit 4%”</em>. I prepare the route; you confirm every transaction in your own wallet.
               </div>
             )}
             {messages.map((m) => (
@@ -401,9 +398,9 @@ export function InstantStockAgent() {
               submit(input);
             }}
           >
-            <input className="input" style={{ flex: 1 }} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Beli $50 NVDA, jual pas naik 4%" data-testid="agent-input" disabled={!!step} />
+            <input className="input" style={{ flex: 1 }} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Buy $50 NVDA, take profit 4%" data-testid="agent-input" disabled={!!step} />
             <button className="btn btn-primary" type="submit" disabled={!input.trim() || !!step} data-testid="agent-send">
-              {T(lang, "Kirim", "Send")}
+              Send
             </button>
           </form>
           <div className="row wrap gap-6">
@@ -414,7 +411,7 @@ export function InstantStockAgent() {
             ))}
           </div>
           <span className="tiny">
-            {T(lang, "Perintah dibaca langsung di browser (tanpa AI). Harga final = quote 0x saat Anda konfirmasi.", "Orders are read instantly in your browser (no AI call). The final price is the 0x quote when you confirm.")}
+            Orders are read instantly in your browser (no AI call). The final price is the 0x quote when you confirm.
           </span>
         </div>
 
@@ -423,7 +420,6 @@ export function InstantStockAgent() {
           {intent && asset && (
             <RouteReviewCard
               intent={intent}
-              lang={lang}
               price={ref}
               market={market}
               quote={quote}
@@ -444,37 +440,33 @@ export function InstantStockAgent() {
             />
           )}
           {open.map((p) => (
-            <ActiveStockWatcherCard key={p.id} p={p} price={prices[p.symbol]} lang={lang} busy={!!step} step={step} onSell={() => closePosition(p)} onDismiss={() => dismiss(p)} account={account} />
+            <ActiveStockWatcherCard key={p.id} p={p} price={prices[p.symbol]} busy={!!step} step={step} onSell={() => closePosition(p)} onDismiss={() => dismiss(p)} account={account} />
           ))}
           {!intent && open.length === 0 && (
             <div className="rcard rcard-pad stack gap-8" data-testid="agent-empty">
-              <span className="stat-label">{T(lang, "Rute & watcher", "Route & watcher")}</span>
+              <span className="stat-label">{"Route & watcher"}</span>
               <span className="small">
-                {T(
-                  lang,
-                  "Ketik perintah di kiri. Rute swap muncul di sini; setelah beli terkonfirmasi on-chain, kartu watcher memantau harga sampai target profit tercapai.",
-                  "Type an order on the left. The swap route appears here; once a buy confirms on chain, a watcher card tracks the price until your take-profit hits."
-                )}
+                Type an order on the left. The swap route appears here; once a buy confirms on chain, a watcher card tracks the price until your take-profit hits.
               </span>
             </div>
           )}
-          {lastRec && !step && <MiniProof rec={lastRec} lang={lang} />}
+          {lastRec && !step && <MiniProof rec={lastRec} />}
         </div>
       </div>
 
       {closed.length > 0 && (
         <section className="stack gap-10" data-testid="agent-closed">
-          <span className="stat-label">{T(lang, "Agen selesai", "Completed agents")}</span>
+          <span className="stat-label">Completed agents</span>
           <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>{T(lang, "Saham", "Stock")}</th>
-                  <th className="right">{T(lang, "Beli", "Bought")}</th>
-                  <th className="right">{T(lang, "Jual", "Sold")}</th>
-                  <th className="right">{T(lang, "Hasil nyata", "Realised")}</th>
-                  <th>{T(lang, "Alasan", "Reason")}</th>
-                  <th className="right">{T(lang, "Transaksi", "Transactions")}</th>
+                  <th>Stock</th>
+                  <th className="right">Bought</th>
+                  <th className="right">Sold</th>
+                  <th className="right">Realised</th>
+                  <th>Reason</th>
+                  <th className="right">Transactions</th>
                 </tr>
               </thead>
               <tbody>
@@ -524,7 +516,6 @@ function Row({ k, v, sub, tone, testid }: { k: string; v: React.ReactNode; sub?:
 
 function RouteReviewCard(p: {
   intent: StockTradeIntent;
-  lang: Lang;
   price: StockPrice | undefined;
   market: MarketInfo | null;
   quote: TradeQuote | null;
@@ -540,7 +531,7 @@ function RouteReviewCard(p: {
   onExecute: () => void;
   onCancel: () => void;
 }) {
-  const { intent, lang, price, market, quote, plan } = p;
+  const { intent, price, market, quote, plan } = p;
   const asset = findStock(intent.stock)!;
   const buy = intent.side === "BUY";
   const spot = price?.price ?? null;
@@ -575,26 +566,26 @@ function RouteReviewCard(p: {
         <div className="notice notice-neutral" data-testid="agent-trade-soon">
           <div>
             {!market!.asset.enabled
-              ? T(lang, `${asset.symbol} belum dibuka untuk trading di Covar. Harga tetap live.`, `${asset.symbol} isn't open for trading on Covar yet. Prices stay live.`)
-              : `${market!.route?.problem ? market!.route.problem + " " : ""}${T(lang, "Trading saham segera dibuka. Rute dan harga di bawah sudah live.", "Stock trading opens soon. The route and prices below are already live.")}`}
+              ? `${asset.symbol} isn't open for trading on Covar yet. Prices stay live.`
+              : `${market!.route?.problem ? market!.route.problem + " " : ""}Stock trading opens soon. The route and prices below are already live.`}
           </div>
         </div>
       )}
 
       <div className="stack">
         {buy ? (
-          <Row k={T(lang, "Bayar", "Pay amount")} v={`${spend?.toFixed(2)} USDG`} sub={intent.amountDefaulted ? T(lang, "jumlah default — ketik jumlah lain untuk mengubah", "default amount — type another amount to change it") : undefined} testid="rr-spend" />
+          <Row k={"Pay amount"} v={`${spend?.toFixed(2)} USDG`} sub={intent.amountDefaulted ? "default amount — type another amount to change it" : undefined} testid="rr-spend" />
         ) : (
           <Row
-            k={T(lang, "Jual", "Sell")}
-            v={plan ? `${fmtS(plan.units, 6)} ${asset.symbol}` : intent.sellAll ? T(lang, "seluruh saldo (hubungkan wallet)", "entire balance (connect wallet)") : "—"}
-            sub={plan?.estimated ? T(lang, `≈ ${usd2(intent.amountUsdg)} dari harga saham`, `≈ ${usd2(intent.amountUsdg)} at the share price`) : undefined}
+            k={"Sell"}
+            v={plan ? `${fmtS(plan.units, 6)} ${asset.symbol}` : intent.sellAll ? "entire balance (connect wallet)" : "—"}
+            sub={plan?.estimated ? `≈ ${usd2(intent.amountUsdg)} at the share price` : undefined}
             testid="rr-sell"
           />
         )}
-        <Row k={T(lang, "Harga saham (acuan)", "Spot market price (reference)")} v={usd2(spot)} sub={price ? `${price.label}${price.source === "yahoo" ? " · Yahoo Finance" : ""}` : T(lang, "memuat…", "loading…")} testid="rr-spot" />
+        <Row k={"Spot market price (reference)"} v={usd2(spot)} sub={price ? `${price.label}${price.source === "yahoo" ? " · Yahoo Finance" : ""}` : "loading…"} testid="rr-spot" />
         <Row
-          k={T(lang, "Perkiraan diterima", "Estimated output")}
+          k={"Estimated output"}
           v={
             estOut !== null
               ? `${buy ? fmtS(estOut, 6) : fmtU(estOut, 4)} ${buy ? asset.symbol : "USDG"}`
@@ -602,23 +593,23 @@ function RouteReviewCard(p: {
                 ? `≈ ${refOut.toFixed(5)} ${asset.symbol}`
                 : "—"
           }
-          sub={estOut !== null ? T(lang, "dari quote 0x (indikatif)", "from the 0x quote (indicative)") : refOut !== null ? T(lang, "perkiraan dari harga saham — bukan harga eksekusi", "estimate from the share price — not the execution price") : undefined}
+          sub={estOut !== null ? "from the 0x quote (indicative)" : refOut !== null ? "estimate from the share price — not the execution price" : undefined}
           tone="accent"
           testid="rr-out"
         />
-        {quote && <Row k={T(lang, "Harga eksekusi", "Execution price")} v={`${quote.price.toFixed(2)} USDG / ${asset.symbol}`} sub={spot ? `${(((quote.price - spot) / spot) * 100).toFixed(2)}% ${T(lang, "vs harga saham", "vs share price")}` : undefined} />}
+        {quote && <Row k={"Execution price"} v={`${quote.price.toFixed(2)} USDG / ${asset.symbol}`} sub={spot ? `${(((quote.price - spot) / spot) * 100).toFixed(2)}% vs share price` : undefined} />}
         {quote?.minBuyAmount && (
-          <Row k={T(lang, `Minimum diterima (slippage ${(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}%)`, `Minimum received (${(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}% slippage)`)} v={`${buy ? fmtS(quote.minBuyAmount, 6) : fmtU(quote.minBuyAmount, 4)} ${buy ? asset.symbol : "USDG"}`} sub={quote.via === "router" ? T(lang, "dijaga on-chain oleh router Covar", "enforced on chain by the Covar router") : undefined} />
+          <Row k={`Minimum received (${(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}% slippage)`} v={`${buy ? fmtS(quote.minBuyAmount, 6) : fmtU(quote.minBuyAmount, 4)} ${buy ? asset.symbol : "USDG"}`} sub={quote.via === "router" ? "enforced on chain by the Covar router" : undefined} />
         )}
         <Row
-          k={T(lang, "Slippage & fee", "Slippage & routing fee")}
-          v={`${(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}% max · ${market?.route?.via === "router" && market.route.router ? `${(market.route.router.feeBps / 100).toFixed(2)}% Covar fee` : quote?.fees.integrator ? `${fmtU(quote.fees.integrator.amount, 4)} USDG Covar fee` : T(lang, "tanpa fee Covar", "no Covar fee")}`}
+          k={"Slippage & routing fee"}
+          v={`${(DEFAULT_SLIPPAGE_BPS / 100).toFixed(1)}% max · ${market?.route?.via === "router" && market.route.router ? `${(market.route.router.feeBps / 100).toFixed(2)}% Covar fee` : quote?.fees.integrator ? `${fmtU(quote.fees.integrator.amount, 4)} USDG Covar fee` : "no Covar fee"}`}
           sub={market?.route ? (market.route.via === "router" ? `via CovarStockRouter ${market.route.router ? shortAddr(market.route.router.address, 4) : ""} → 0x` : "via 0x AllowanceHolder") : undefined}
         />
         {buy && intent.takeProfitPct !== undefined && (
           <div className="tp-box" data-testid="rr-target">
             <div className="row between">
-              <span className="small strong">{T(lang, "Target take-profit", "Target take-profit")}</span>
+              <span className="small strong">Target take-profit</span>
               <span className="small strong trade-ok">
                 +{intent.takeProfitPct}% ({usd2(tgt)})
               </span>
@@ -632,28 +623,20 @@ function RouteReviewCard(p: {
               </div>
             )}
             <span className="tiny">
-              {T(
-                lang,
-                `Watcher memantau harga saham dan memberi tahu saat target tercapai (≈ +${usd2(estProfit)} dari pergerakan harga; hasil nyata = quote jual saat itu, setelah spread & fee).`,
-                `The watcher tracks the share price and tells you when the target hits (≈ +${usd2(estProfit)} from the price move; the real result is the sell quote at that time, after spread & fees).`
-              )}
+              {`The watcher tracks the share price and tells you when the target hits (≈ +${usd2(estProfit)} from the price move; the real result is the sell quote at that time, after spread & fees).`}
             </span>
           </div>
         )}
       </div>
 
       {p.quoteErr && <div className="notice notice-warn"><div>{p.quoteErr}</div></div>}
-      {balanceShort && <div className="notice notice-warn"><div>{buy ? T(lang, "Saldo USDG tidak cukup.", "Not enough USDG in this wallet.") : T(lang, `Saldo ${asset.symbol} tidak cukup.`, `Not enough ${asset.symbol} in this wallet.`)}</div></div>}
+      {balanceShort && <div className="notice notice-warn"><div>{buy ? "Not enough USDG in this wallet." : `Not enough ${asset.symbol} in this wallet.`}</div></div>}
 
       {market?.tradingEnabled && market.region.allowed && (
         <label className="row gap-8 tiny" style={{ alignItems: "flex-start" }}>
           <input type="checkbox" checked={p.attested} onChange={(e) => p.onAttest(e.target.checked)} data-testid="agent-attest" style={{ marginTop: 2 }} />
           <span>
-            {T(
-              lang,
-              "Saya bukan U.S. person, tidak berada di yurisdiksi terlarang, dan paham Stock Tokens adalah efek utang tokenized dari Robinhood Assets (Jersey) Limited yang mengikuti harga saham tanpa hak pemegang saham.",
-              "I am not a U.S. person, I am not located in a restricted jurisdiction, and I understand Stock Tokens are tokenized debt securities issued by Robinhood Assets (Jersey) Limited that track a share price but carry no shareholder rights."
-            )}
+            I am not a U.S. person, I am not located in a restricted jurisdiction, and I understand Stock Tokens are tokenized debt securities issued by Robinhood Assets (Jersey) Limited that track a share price but carry no shareholder rights.
           </span>
         </label>
       )}
@@ -661,13 +644,13 @@ function RouteReviewCard(p: {
       <div className="row gap-6 tiny steps">
         <span className={cx("step", (p.step === "approve" || p.step === "approve_wait") && "step-on", p.wallet && !needApprove && "step-done")}>1. Approve {buy ? "USDG" : asset.symbol}</span>
         <span>→</span>
-        <span className={cx("step", (p.step === "quote" || p.step === "sign" || p.step === "confirming") && "step-on")}>2. {T(lang, "Eksekusi swap on-chain", "Execute swap on-chain")}</span>
+        <span className={cx("step", (p.step === "quote" || p.step === "sign" || p.step === "confirming") && "step-on")}>2. {"Execute swap on-chain"}</span>
       </div>
 
       {p.step && (
         <div className="notice notice-neutral" data-testid="agent-step">
           <div>
-            {STEP_TEXT[lang][p.step]}
+            {STEP_TEXT[p.step]}
             {p.stepHash && (
               <a href={txUrl(p.stepHash)} target="_blank" rel="noreferrer noopener" className="mono tiny" style={{ marginLeft: 6 }}>
                 {shortAddr(p.stepHash, 6)} ↗
@@ -680,17 +663,17 @@ function RouteReviewCard(p: {
       <div className="row gap-8">
         <button className="btn btn-primary btn-lg" style={{ flex: 1 }} onClick={p.onExecute} disabled={!!p.step || (!!p.account && !ready) || !market?.tradingEnabled || !market.region.allowed} data-testid="agent-execute">
           {!market?.tradingEnabled || !market?.region.allowed
-            ? T(lang, "Trading belum tersedia", "Trading not available")
+            ? "Trading not available"
             : !p.account
-              ? T(lang, "Hubungkan wallet", "Connect wallet")
+              ? "Connect wallet"
               : p.step
-                ? T(lang, "Menunggu wallet…", "Submitting to wallet…")
+                ? "Submitting to wallet…"
                 : buy
-                  ? `${needApprove ? "Approve & " : ""}${T(lang, "Beli", "Buy")} ${asset.symbol} On-Chain`
-                  : `${needApprove ? "Approve & " : ""}${T(lang, "Jual", "Sell")} ${asset.symbol} On-Chain`}
+                  ? `${needApprove ? "Approve & " : ""}Buy ${asset.symbol} On-Chain`
+                  : `${needApprove ? "Approve & " : ""}Sell ${asset.symbol} On-Chain`}
         </button>
         <button className="btn btn-secondary btn-lg" onClick={p.onCancel} disabled={!!p.step}>
-          {T(lang, "Batal", "Cancel")}
+          Cancel
         </button>
       </div>
     </div>
@@ -702,7 +685,6 @@ function RouteReviewCard(p: {
 export function ActiveStockWatcherCard({
   p,
   price,
-  lang,
   busy,
   step,
   onSell,
@@ -711,7 +693,6 @@ export function ActiveStockWatcherCard({
 }: {
   p: StockPosition;
   price: StockPrice | undefined;
-  lang: Lang;
   busy: boolean;
   step: TradeStep | null;
   onSell: () => void;
@@ -749,7 +730,7 @@ export function ActiveStockWatcherCard({
             </span>
             {hit ? "TARGET ACHIEVED" : stopped ? "STOP HIT" : "ACTIVE WATCHER"}
           </span>
-          <strong className="small">{p.symbol} {T(lang, "Agen", "Agent")}</strong>
+          <strong className="small">{p.symbol} {"Agent"}</strong>
         </div>
         <a className="tiny mono" href={tokenUrl(p.stockAddress)} target="_blank" rel="noreferrer noopener">
           {fmtS(p.shares, 5)} {p.symbol} ↗
@@ -757,23 +738,23 @@ export function ActiveStockWatcherCard({
       </div>
       <div className="grid-2" style={{ gap: 12 }}>
         <div className="stack" style={{ gap: 2 }}>
-          <span className="tiny">{T(lang, "Harga masuk (saham)", "Entry price (share)")}</span>
+          <span className="tiny">Entry price (share)</span>
           <span className="mono-num strong">{usd2(p.entryRef)}</span>
-          <span className="tiny">{T(lang, "dibayar", "paid")} {p.entryExec.toFixed(2)} USDG/{p.symbol}</span>
+          <span className="tiny">{"paid"} {p.entryExec.toFixed(2)} USDG/{p.symbol}</span>
         </div>
         <div className="stack" style={{ gap: 2 }}>
-          <span className="tiny">{T(lang, "Harga sekarang", "Current price")}</span>
+          <span className="tiny">Current price</span>
           <span className={cx("mono-num strong", w.pnlPct !== null && (w.pnlPct >= 0 ? "pos" : "neg"))} data-testid="watcher-price">
             {usd2(price?.price)} {w.pnlPct !== null ? `(${w.pnlPct >= 0 ? "+" : ""}${w.pnlPct.toFixed(2)}%)` : ""}
           </span>
-          <span className="tiny">{price?.label ?? T(lang, "memuat…", "loading…")}</span>
+          <span className="tiny">{price?.label ?? "loading…"}</span>
         </div>
       </div>
       {p.targetRef && (
         <div className="stack" style={{ gap: 4 }}>
           <div className="row between tiny">
             <span>
-              {T(lang, "Progres ke target", "Progress to target")} ({usd2(p.targetRef)} · +{p.takeProfitPct}%)
+              {"Progress to target"} ({usd2(p.targetRef)} · +{p.takeProfitPct}%)
             </span>
             <span className="strong" data-testid="watcher-progress">{hit ? 100 : w.progressPct.toFixed(0)}%</span>
           </div>
@@ -784,26 +765,26 @@ export function ActiveStockWatcherCard({
       )}
       {p.stopRef && <span className="tiny">Stop-loss {usd2(p.stopRef)} (−{p.stopLossPct}%)</span>}
       <div className="trade-row">
-        <span className="tiny">{T(lang, "Jual sekarang (quote 0x)", "Sell now (0x quote)")}</span>
+        <span className="tiny">Sell now (0x quote)</span>
         <span className="small num" style={{ textAlign: "right" }}>
           {sellNow ? `${fmtU(sellNow.usdg, 4)} USDG` : "—"}
           <span className={cx("tiny", nowPnl !== null && (nowPnl >= 0n ? "trade-ok" : "trade-warn"))} style={{ display: "block" }}>
-            {nowPnl !== null ? `${nowPnl >= 0n ? "+" : ""}${fmtU(nowPnl, 4)} USDG ${T(lang, "vs modal", "vs cost")} ${fmtU(p.usdgIn, 2)}` : T(lang, "tersedia saat trading dibuka", "available when trading is open")}
+            {nowPnl !== null ? `${nowPnl >= 0n ? "+" : ""}${fmtU(nowPnl, 4)} USDG vs cost ${fmtU(p.usdgIn, 2)}` : "available when trading is open"}
           </span>
         </span>
       </div>
-      <span className="tiny">{T(lang, "Memantau harga live tiap 5 detik selama halaman ini terbuka.", "Polling the live price every 5 s while this page is open.")}</span>
-      {busy && step && <span className="tiny">{STEP_TEXT[lang][step]}</span>}
+      <span className="tiny">Polling the live price every 5 s while this page is open.</span>
+      {busy && step && <span className="tiny">{STEP_TEXT[step]}</span>}
       <div className="row gap-8">
         <button className={cx("btn btn-lg", hit ? "btn-primary btn-lock" : "btn-exit")} style={{ flex: 1 }} onClick={onSell} disabled={busy} data-testid="watcher-sell">
-          {hit ? T(lang, `Kunci Profit: Jual ${p.symbol} ke USDG`, `Lock Profit: Sell ${p.symbol} to USDG`) : T(lang, "Keluar Darurat (Jual Sekarang)", "Emergency Market Exit (Sell Now)")}
+          {hit ? `Lock Profit: Sell ${p.symbol} to USDG` : "Emergency Market Exit (Sell Now)"}
         </button>
-        <button className="btn btn-secondary btn-lg" onClick={onDismiss} disabled={busy} title={T(lang, "Hapus watcher (tidak menjual)", "Remove the watcher (does not sell)")}>
-          {T(lang, "Hapus", "Dismiss")}
+        <button className="btn btn-secondary btn-lg" onClick={onDismiss} disabled={busy} title={"Remove the watcher (does not sell)"}>
+          Dismiss
         </button>
       </div>
       <a className="tiny mono" href={txUrl(p.buyHash)} target="_blank" rel="noreferrer noopener">
-        {T(lang, "transaksi beli", "buy transaction")} {shortAddr(p.buyHash, 6)} ↗
+        {"buy transaction"} {shortAddr(p.buyHash, 6)} ↗
       </a>
     </div>
   );
@@ -811,20 +792,20 @@ export function ActiveStockWatcherCard({
 
 /* ------------------------------------------------------------ mini proof */
 
-function MiniProof({ rec, lang }: { rec: TradeRecord; lang: Lang }) {
+function MiniProof({ rec }: { rec: TradeRecord }) {
   const u = BigInt(rec.usdgDelta);
   const s = BigInt(rec.stockDelta);
   const ok = rec.status === "confirmed" && (rec.side === "buy" ? u < 0n && s > 0n : u > 0n && s < 0n);
   return (
     <div className="trade-proof" data-testid="agent-proof">
       <div className="row between">
-        <span className="stat-label">{T(lang, "Bukti · dari receipt", "Proof · read from the receipt")}</span>
+        <span className="stat-label">Proof · read from the receipt</span>
         <span className={cx("pill", ok ? "pill-green" : "pill-red")}>{ok ? "Swap succeeded" : "Check"}</span>
       </div>
       <Row k="USDG" v={`${u > 0n ? "+" : ""}${fmtU(u, 6)}`} />
       <Row k={rec.symbol} v={`${s > 0n ? "+" : ""}${fmtS(s, 8)}`} sub={<a href={tokenUrl(rec.stockAddress)} target="_blank" rel="noreferrer noopener" className="mono">official {shortAddr(rec.stockAddress, 4)} ↗</a>} />
-      {rec.covarEvent && <Row k={T(lang, "Lewat Covar", "Executed through Covar")} v={<span className="row gap-4"><Icon name="check" size={13} />{rec.covarEvent.kind}</span>} tone="ok" sub={`fee ${fmtU(rec.covarEvent.fee, 6)} USDG`} />}
-      <Row k={T(lang, "Transaksi", "Transaction")} v={<a href={txUrl(rec.hash)} target="_blank" rel="noreferrer noopener" className="mono" data-testid="agent-proof-tx">{shortAddr(rec.hash, 8)} ↗</a>} sub={`block ${rec.block.toLocaleString("en-US")}`} />
+      {rec.covarEvent && <Row k={"Executed through Covar"} v={<span className="row gap-4"><Icon name="check" size={13} />{rec.covarEvent.kind}</span>} tone="ok" sub={`fee ${fmtU(rec.covarEvent.fee, 6)} USDG`} />}
+      <Row k={"Transaction"} v={<a href={txUrl(rec.hash)} target="_blank" rel="noreferrer noopener" className="mono" data-testid="agent-proof-tx">{shortAddr(rec.hash, 8)} ↗</a>} sub={`block ${rec.block.toLocaleString("en-US")}`} />
     </div>
   );
 }
