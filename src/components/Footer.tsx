@@ -10,6 +10,7 @@ const COLS: { title: string; links: { href: string; label: string; ext?: boolean
       { href: "/explore", label: "Discover" },
       { href: "/studio", label: "My agents" },
       { href: "/portfolio", label: "My money" },
+      { href: "/trade", label: "Stock trade" },
       { href: "/economics", label: "Economics" },
       { href: "/treasury", label: "Treasury" },
     ],

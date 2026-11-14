@@ -37,12 +37,17 @@
     "test:operator": "tsx tests/services/operator.test.ts",
     "test:auth": "tsx tests/services/auth.test.ts",
     "test:e2e:invest": "node scripts/e2e-invest.mjs",
+    "test:e2e:trade": "node scripts/e2e-trade.mjs",
     "db:pg:generate": "node scripts/prisma-pg.mjs generate",
     "db:pg:deploy": "node scripts/prisma-pg.mjs migrate deploy",
     "db:pg:check": "node scripts/prisma-pg.mjs check",
     "test:indexer": "tsx tests/services/indexer.test.ts",
     "test:credits": "tsx tests/services/credits.test.ts",
-    "cli": "node cli/run.js"
+    "cli": "node cli/run.js",
+    "test:intent": "tsx tests/stockIntent.test.ts",
+    "test:trade": "tsx tests/stockTrade.test.ts",
+    "test:contracts:fork": "HARDHAT_FORK_URL=https://rpc.mainnet.chain.robinhood.com node scripts/hardhat.mjs test tests/contracts/CovarStockRouter.fork.test.ts",
+    "deploy:router": "node scripts/hardhat.mjs run scripts/deploy-router.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",

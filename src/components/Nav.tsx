@@ -21,6 +21,7 @@ const PRIMARY = [
   { href: "/explore", label: "Discover", match: ["/explore", "/agents", "/creators"] },
   { href: "/studio", label: "My agents", match: ["/studio"] },
   { href: "/portfolio", label: "My money", match: ["/portfolio"] },
+  { href: "/trade", label: "Trade", match: ["/trade"] },
 ];
 
 type MoreItem = { href: string; label: string } | { sep: true };

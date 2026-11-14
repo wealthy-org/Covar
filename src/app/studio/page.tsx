@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Builder } from "@/components/Builder";
+import { InstantStockAgent } from "@/components/stock/InstantStockAgent";
 import { actions, useCovar } from "@/lib/store";
 import { cx, pctSigned, timeAgo, usd, usdSigned } from "@/lib/format";
 import { Empty, ProvenanceBadge, TokenLogo, useToast } from "@/components/ui";
@@ -249,6 +250,70 @@ function AgentCard({
   );
 }
 
+/* ---------------------------------------------------------------- modes */
+
+type StudioMode = "quant" | "stock";
+const MODE_KEY = "covar.studio.mode.v1";
+
+/** ?mode=stock wins; otherwise the last choice in this browser; default: the quant builder. */
+function useStudioMode(fromUrl: string | null): [StudioMode, (m: StudioMode) => void] {
+  const [mode, setMode] = useState<StudioMode>(fromUrl === "stock" ? "stock" : "quant");
+  useEffect(() => {
+    if (fromUrl === "stock" || fromUrl === "quant") return setMode(fromUrl);
+    try {
+      if (localStorage.getItem(MODE_KEY) === "stock") setMode("stock");
+    } catch {
+      /* ignore */
+    }
+  }, [fromUrl]);
+  const set = (m: StudioMode) => {
+    setMode(m);
+    try {
+      localStorage.setItem(MODE_KEY, m);
+    } catch {
+      /* ignore */
+    }
+  };
+  return [mode, set];
+}
+
+function StudioModeSwitch({ mode, onMode }: { mode: StudioMode; onMode: (m: StudioMode) => void }) {
+  return (
+    <div className="mode-switch" role="tablist" aria-label="Studio mode" data-testid="studio-mode">
+      <button role="tab" aria-selected={mode === "stock"} data-active={mode === "stock"} onClick={() => onMode("stock")} data-testid="mode-stock">
+        <span className="mode-glyph">⚡</span>
+        <span className="stack" style={{ gap: 1 }}>
+          <span className="mode-title">Instant Stock Agent</span>
+          <span className="mode-sub">Chat → on-chain swap → take-profit watcher</span>
+        </span>
+      </button>
+      <button role="tab" aria-selected={mode === "quant"} data-active={mode === "quant"} onClick={() => onMode("quant")} data-testid="mode-quant">
+        <span className="mode-glyph">📊</span>
+        <span className="stack" style={{ gap: 1 }}>
+          <span className="mode-title">Quant Strategy Builder</span>
+          <span className="mode-sub">EMA / RSI rules → backtest → publish vault</span>
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function StudioHeader({ mode, onMode }: { mode: StudioMode; onMode: (m: StudioMode) => void }) {
+  return (
+    <>
+      <StudioModeSwitch mode={mode} onMode={onMode} />
+      <div className="stack gap-8" style={{ maxWidth: 680 }}>
+        <span className="label-dot">Studio · US stocks</span>
+        <h1 className="page-title">Instant Stock Agent</h1>
+        <p className="page-sub">
+          Type a trade in plain words. Covar prepares the route on Robinhood Chain, you confirm in your own wallet, and a
+          watcher follows the price until your take-profit hits. Official Robinhood Stock Tokens only.
+        </p>
+      </div>
+    </>
+  );
+}
+
 function StudioInner() {
   const params = useSearchParams();
   const router = useRouter();
@@ -256,6 +321,11 @@ function StudioInner() {
   const { toast, node } = useToast();
   const credits = useCredits();
   const isNew = params.get("new") === "1";
+  const [mode, setModeState] = useStudioMode(params.get("mode"));
+  const setMode = (m: StudioMode) => {
+    setModeState(m);
+    router.replace(m === "stock" ? "/studio?mode=stock" : "/studio", { scroll: false });
+  };
   const prices = usePrices(2000);
   const now = useNow(1000);
 
@@ -325,6 +395,14 @@ function StudioInner() {
   };
 
   if (isNew) return <Builder />;
+  if (mode === "stock") {
+    return (
+      <div className="wrap-lg page-pad stack gap-24">
+        <StudioHeader mode={mode} onMode={setMode} />
+        <InstantStockAgent />
+      </div>
+    );
+  }
 
   const capitalTotal = runningRuns.reduce((s, r) => s + r.capitalUsd, 0);
   const pnlTotal = runningRuns.reduce((s, r) => s + r.pnlUsd, 0);
@@ -332,6 +410,7 @@ function StudioInner() {
   return (
     <div className="wrap-md page-pad stack gap-24">
       {node}
+      <StudioModeSwitch mode={mode} onMode={setMode} />
       <div className="row between wrap gap-16">
         <div className="stack gap-8" style={{ maxWidth: 620 }}>
           <span className="label-dot">Studio</span>
